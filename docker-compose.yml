@@ -1,0 +1,46 @@
+# Docker Compose for Hyperlocal Air Quality System
+
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aqi-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=False
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - ./backend/logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - aqi-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aqi-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=http://backend:8000
+    restart: unless-stopped
+    networks:
+      - aqi-network
+
+networks:
+  aqi-network:
+    driver: bridge
+
+volumes:
+  backend-logs:

@@ -1,0 +1,97 @@
+.navbar {
+    position: fixed;
+    left: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    height: auto;
+    width: 72px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem 0;
+    background: rgba(13, 17, 23, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 2rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+}
+
+.logoContainer {
+    margin-bottom: 2.5rem;
+    display: flex;
+    justify-content: center;
+}
+
+.logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 1.25rem;
+    background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+    transition: transform 0.3s ease;
+}
+
+.logo:hover {
+    transform: rotate(15deg) scale(1.1);
+}
+
+.navItems {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.navItem {
+    background: none;
+    border: none;
+    position: relative;
+    padding: 0.75rem;
+    border-radius: 1rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.navItem::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%) scale(0);
+    width: 4px;
+    height: 20px;
+    background: var(--primary);
+    border-radius: 4px;
+    transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.navItem:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+    transform: translateX(4px);
+}
+
+.navItemActive {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary);
+}
+
+.navItemActive::before {
+    transform: translateY(-50%) scale(1);
+}
+
+.bottomItems {
+    margin-top: auto;
+    display: flex;
+    justify-content: center;
+}
