@@ -339,10 +339,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '12px',
     padding: '1rem',
     cursor: 'pointer',
-    transition: 'transform 0.2s',
-    ':hover': {
-      transform: 'translateX(4px)'
-    }
+    transition: 'transform 0.2s'
   },
   notificationHeader: {
     display: 'flex',
