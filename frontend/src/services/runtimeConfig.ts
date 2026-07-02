@@ -8,7 +8,7 @@ const inferRenderBackendOrigin = () => {
     return null;
   }
 
-  const host = window.location.host;
+  const host = window.location.hostname;
 
   if (!host.includes('onrender.com')) {
     return null;
@@ -20,6 +20,12 @@ const inferRenderBackendOrigin = () => {
 
   if (host.includes('frontend')) {
     return `https://${host.replace('frontend', 'backend')}`;
+  }
+
+  const suffix = '.onrender.com';
+  const subdomain = host.endsWith(suffix) ? host.slice(0, -suffix.length) : '';
+  if (subdomain && !subdomain.includes('backend')) {
+    return `https://${subdomain}-backend.onrender.com`;
   }
 
   return null;

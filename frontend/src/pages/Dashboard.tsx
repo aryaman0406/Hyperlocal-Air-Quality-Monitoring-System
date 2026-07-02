@@ -30,11 +30,25 @@ const Dashboard: React.FC = () => {
     });
 
     useEffect(() => {
-        const fetchData = async () => {
+        let retryTimer: ReturnType<typeof setTimeout> | null = null;
+        let isUnmounted = false;
+
+        const scheduleRetry = () => {
+            if (retryTimer || isUnmounted) return;
+            retryTimer = setTimeout(() => {
+                retryTimer = null;
+                fetchData(false);
+            }, 10000);
+        };
+
+        const fetchData = async (showLoader: boolean = true) => {
+            if (showLoader) {
+                setInitialLoading(true);
+            }
             setInitialError('');
-            setInitialLoading(true);
             try {
                 const live = await getLiveAQI(location.lat, location.lon);
+                if (isUnmounted) return;
                 setLiveData(live);
 
                 // Extract historical data for trend
@@ -62,11 +76,15 @@ const Dashboard: React.FC = () => {
                 }
 
                 const hot = await getHotspots(location.lat, location.lon);
+                if (isUnmounted) return;
                 setHotspots(hot);
             } catch (error) {
                 console.error("Failed to fetch data", error);
+                if (isUnmounted) return;
                 setInitialError('Live AQI data is unavailable right now. The app is using fallback views while the backend wakes up.');
+                scheduleRetry();
             } finally {
+                if (isUnmounted) return;
                 setInitialLoading(false);
             }
         };
@@ -77,6 +95,7 @@ const Dashboard: React.FC = () => {
             (data) => {
                 console.log('WebSocket update:', data);
                 if (data.type === 'aqi_update') {
+                    setInitialError('');
                     // Only update if the data is relevant to our current vicinity (within ~50km)
                     const dataLat = data.data?.center?.lat;
                     const dataLon = data.data?.center?.lon;
@@ -87,16 +106,29 @@ const Dashboard: React.FC = () => {
                         }
                     }
                 } else if (data.type === 'hotspot_update') {
+                    setInitialError('');
                     setHotspots(data.data);
                 }
             },
-            () => setWsConnected(true),
-            () => setWsConnected(false)
+            () => {
+                setWsConnected(true);
+                setInitialError('');
+                fetchData(false);
+            },
+            () => {
+                setWsConnected(false);
+                scheduleRetry();
+            }
         );
 
         ws.connect();
 
         return () => {
+            isUnmounted = true;
+            if (retryTimer) {
+                clearTimeout(retryTimer);
+                retryTimer = null;
+            }
             ws.disconnect();
         };
     }, [location]);

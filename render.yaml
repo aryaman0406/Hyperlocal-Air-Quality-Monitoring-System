@@ -34,6 +34,12 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://hyperlocal-aqi-backend.onrender.com
+        fromService:
+          name: hyperlocal-aqi-backend
+          type: web
+          property: host
       - key: VITE_WS_URL
-        value: wss://hyperlocal-aqi-backend.onrender.com/ws
+        fromService:
+          name: hyperlocal-aqi-backend
+          type: web
+          property: host
