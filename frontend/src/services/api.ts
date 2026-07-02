@@ -1,9 +1,7 @@
 import axios from 'axios';
+import { resolveApiBaseUrl, resolveWebSocketUrl } from './runtimeConfig';
 
-// Use environment variable for API base URL, fallback to localhost for development
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
-    ? `${import.meta.env.VITE_API_BASE_URL}/api`
-    : 'http://localhost:8000/api';
+const API_BASE_URL = resolveApiBaseUrl();
 
 const api = axios.create({
     baseURL: API_BASE_URL,
@@ -230,7 +228,7 @@ export class AQIWebSocket {
 
     connect() {
         try {
-            const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+            const wsUrl = resolveWebSocketUrl();
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {

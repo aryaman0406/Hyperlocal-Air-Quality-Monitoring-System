@@ -1,17 +1,28 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const normalizeProxyTarget = (value?: string) => {
+  const fallback = 'http://localhost:8000'
+  const candidate = (value || fallback).trim()
+
+  if (/^https?:\/\//i.test(candidate)) {
+    return candidate
+  }
+
+  return `http://${candidate.replace(/^\/+/, '')}`
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: normalizeProxyTarget(process.env.VITE_API_BASE_URL || process.env.VITE_API_URL),
         changeOrigin: true,
       },
       '/ws': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: normalizeProxyTarget(process.env.VITE_API_BASE_URL || process.env.VITE_API_URL),
         changeOrigin: true,
         ws: true,
       }

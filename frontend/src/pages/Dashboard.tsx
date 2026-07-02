@@ -18,6 +18,8 @@ const Dashboard: React.FC = () => {
     const [hotspots, setHotspots] = useState<any[]>([]);
     const [currentAqi, setCurrentAqi] = useState<number>(184);
     const [wsConnected, setWsConnected] = useState(false);
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [initialError, setInitialError] = useState('');
     const [activeView, setActiveView] = useState<'overview' | 'forecast' | 'health_impact' | 'venues' | 'reports' | 'favorites'>('overview');
 
     // Global Location State
@@ -29,6 +31,8 @@ const Dashboard: React.FC = () => {
 
     useEffect(() => {
         const fetchData = async () => {
+            setInitialError('');
+            setInitialLoading(true);
             try {
                 const live = await getLiveAQI(location.lat, location.lon);
                 setLiveData(live);
@@ -61,6 +65,9 @@ const Dashboard: React.FC = () => {
                 setHotspots(hot);
             } catch (error) {
                 console.error("Failed to fetch data", error);
+                setInitialError('Live AQI data is unavailable right now. The app is using fallback views while the backend wakes up.');
+            } finally {
+                setInitialLoading(false);
             }
         };
         fetchData();
@@ -183,6 +190,22 @@ const Dashboard: React.FC = () => {
                     </div>
                 </div>
             </header>
+
+            {(initialLoading || initialError) && (
+                <div className="glass-card" style={{ gridColumn: 'span 12', padding: '1rem 1.25rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
+                    <div>
+                        <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
+                            {initialLoading ? 'Loading live data' : 'Backend status'}
+                        </div>
+                        <div style={{ fontWeight: 600 }}>
+                            {initialLoading ? 'Fetching AQI, hotspots, and historical context...' : initialError}
+                        </div>
+                    </div>
+                    {initialLoading && (
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>This should resolve automatically once the first response arrives.</div>
+                    )}
+                </div>
+            )}
 
             {/* Navigation Tabs */}
             <div className={styles.fullWidth} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>

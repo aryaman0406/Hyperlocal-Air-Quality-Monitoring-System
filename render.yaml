@@ -38,3 +38,8 @@ services:
           name: hyperlocal-aqi-backend
           type: web
           property: host
+      - key: VITE_WS_URL
+        fromService:
+          name: hyperlocal-aqi-backend
+          type: web
+          property: host
