@@ -2,11 +2,9 @@
 Prediction service — generates an AQI spatial grid for the map.
 Anchors the grid to real Open-Meteo air quality data for the center point,
 then interpolates spatially for surrounding grid cells using
-a lightweight atmospheric dispersion model.
+a lightweight atmospheric dispersion calculation.
 """
-import asyncio
-import aiohttp
-import numpy as np
+import math
 from datetime import datetime
 from typing import Optional, Dict
 from services.openaq_service import OpenAQService
@@ -72,35 +70,31 @@ class PredictionService:
 
         # Build a 13×13 spatial grid around the center
         lat_offset = target_radius / 111.0
-        cos_lat = max(0.01, np.cos(np.radians(target_lat)))
+        cos_lat = max(0.01, math.cos(math.radians(target_lat)))
         lon_offset = target_radius / (111.0 * cos_lat)
 
         steps = 13
-        lats = np.linspace(target_lat - lat_offset, target_lat + lat_offset, steps)
-        lons = np.linspace(target_lon - lon_offset, target_lon + lon_offset, steps)
-        lat_grid, lon_grid = np.meshgrid(lats, lons)
-        flat_lat = lat_grid.flatten()
-        flat_lon = lon_grid.flatten()
+        lat_step = (2 * lat_offset) / (steps - 1) if steps > 1 else 0
+        lon_step = (2 * lon_offset) / (steps - 1) if steps > 1 else 0
 
-        # Spatial variation: slight gradient from center outward
-        dist = np.sqrt((flat_lat - target_lat) ** 2 + (flat_lon - target_lon) ** 2)
-        max_dist = np.max(dist) if np.max(dist) > 0 else 1.0
-        # AQI tends to be slightly higher at center (urban heat/traffic) and lower at edges
-        spatial_factor = 1.0 + 0.15 * (1.0 - dist / max_dist)
-        # Subtle reproducible noise based on coordinates
-        noise = (np.sin(flat_lat * 100) * np.cos(flat_lon * 100)) * (real_aqi * 0.06)
+        grid = []
+        max_dist = math.sqrt(lat_offset ** 2 + lon_offset ** 2) or 1.0
 
-        aqi_values = np.maximum(5.0, real_aqi * spatial_factor + noise)
+        for i in range(steps):
+            cur_lat = (target_lat - lat_offset) + i * lat_step
+            for j in range(steps):
+                cur_lon = (target_lon - lon_offset) + j * lon_step
+                dist = math.sqrt((cur_lat - target_lat) ** 2 + (cur_lon - target_lon) ** 2)
+                spatial_factor = 1.0 + 0.15 * (1.0 - dist / max_dist)
+                noise = (math.sin(cur_lat * 100) * math.cos(cur_lon * 100)) * (real_aqi * 0.06)
+                point_aqi = max(5.0, real_aqi * spatial_factor + noise)
 
-        grid = [
-            {
-                "lat": round(float(flat_lat[i]), 5),
-                "lon": round(float(flat_lon[i]), 5),
-                "aqi": round(float(aqi_values[i]), 1),
-                "category": _get_aqi_category(aqi_values[i]),
-            }
-            for i in range(len(flat_lat))
-        ]
+                grid.append({
+                    "lat": round(cur_lat, 5),
+                    "lon": round(cur_lon, 5),
+                    "aqi": round(point_aqi, 1),
+                    "category": _get_aqi_category(point_aqi),
+                })
 
         return {
             "available": True,

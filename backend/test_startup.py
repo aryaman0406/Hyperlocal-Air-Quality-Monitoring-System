@@ -13,10 +13,10 @@ async def test_imports():
         from api.websocket import manager
         from services.prediction_service import PredictionService
         from services.hotspot_service import HotspotService
-        print("✓ All imports successful")
+        print("[OK] All imports successful")
         return True
     except Exception as e:
-        print(f"✗ Import error: {e}")
+        print(f"[FAIL] Import error: {e}")
         return False
 
 async def test_services():
@@ -28,10 +28,10 @@ async def test_services():
         
         prediction_service = PredictionService()
         hotspot_service = HotspotService()
-        print("✓ Services initialized successfully")
+        print("[OK] Services initialized successfully")
         return True
     except Exception as e:
-        print(f"✗ Service initialization error: {e}")
+        print(f"[FAIL] Service initialization error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -46,10 +46,10 @@ async def main():
     
     print("\n" + "=" * 50)
     if result1 and result2:
-        print("✓ All tests passed! Backend is ready.")
+        print("[OK] All tests passed! Backend is ready.")
         return 0
     else:
-        print("✗ Some tests failed. Check errors above.")
+        print("[FAIL] Some tests failed. Check errors above.")
         return 1
 
 if __name__ == "__main__":

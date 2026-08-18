@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wind, Map as MapIcon, BarChart3, Settings } from 'lucide-react';
+import { Map as MapIcon, BarChart3, Settings } from 'lucide-react';
 import styles from './Navbar.module.css';
 
 interface NavbarProps {
@@ -18,7 +18,11 @@ const Navbar: React.FC<NavbarProps> = ({ activeView, onViewChange }) => {
                     aria-label="Dashboard Home"
                 >
                     <div className={styles.logo}>
-                        <Wind className="text-white" size={24} color="#ffffff" />
+                        <img 
+                            src="/logo.png" 
+                            alt="AtmosPulse Logo" 
+                            style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} 
+                        />
                     </div>
                 </button>
             </div>
