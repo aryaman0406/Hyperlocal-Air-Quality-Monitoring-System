@@ -304,7 +304,9 @@ export class AQIWebSocket {
         if (this.ws) {
             try {
                 this.ws.close();
-            } catch (_) {}
+            } catch (err) {
+                console.debug('WebSocket close error:', err);
+            }
             this.ws = null;
         }
     }

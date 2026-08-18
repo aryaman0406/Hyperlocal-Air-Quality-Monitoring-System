@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Search, Navigation, ZoomIn, ZoomOut } from 'lucide-react';
@@ -55,30 +55,29 @@ const MapView: React.FC<MapViewProps> = ({
   const [searchedLocation, setSearchedLocation] = useState<LocationData | null>(null);
   const [searchError, setSearchError] = useState<string>('');
 
-  useEffect(() => {
-    fetchGridData();
-  }, [center]);
-
-  useEffect(() => {
-    if (centerLat && centerLon) {
-      setCenter([centerLat, centerLon]);
-    }
-  }, [centerLat, centerLon]);
-
-  const fetchGridData = async () => {
+  const fetchGridData = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getAQIGrid(center[0], center[1], 5);
       setGridData(data.grid || []);
     } catch (error) {
       console.error("Failed to fetch grid data", error);
-      // Do not present randomly generated markers as live measurements.
       setGridData([]);
       setSearchError('Map data is temporarily unavailable. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [center]);
+
+  useEffect(() => {
+    fetchGridData();
+  }, [fetchGridData]);
+
+  useEffect(() => {
+    if (centerLat && centerLon) {
+      setCenter([centerLat, centerLon]);
+    }
+  }, [centerLat, centerLon]);
 
   const getAqiColor = (aqi: number) => {
     if (aqi <= 50) return '#10b981';
@@ -108,20 +107,15 @@ const MapView: React.FC<MapViewProps> = ({
     setSearchError('');
 
     try {
-      // Geocode the search query
       const geocodeResult = await geocodeLocation(searchQuery);
 
       if (geocodeResult && geocodeResult.lat && geocodeResult.lon) {
         const { lat, lon, address } = geocodeResult;
-
-        // Fetch AQI and temperature for the location
         const locationData = await getLocationAQI(lat, lon);
 
-        // Update map center
         setCenter([lat, lon]);
         setZoom(12);
 
-        // Store searched location data
         setSearchedLocation({
           lat,
           lon,
@@ -130,7 +124,6 @@ const MapView: React.FC<MapViewProps> = ({
           address: address || locationData.location?.address
         });
 
-        // Notify parent
         if (onLocationChange) {
           onLocationChange(lat, lon, address || locationData.location?.address);
         }
@@ -158,7 +151,6 @@ const MapView: React.FC<MapViewProps> = ({
           setCenter([lat, lon]);
           setZoom(13);
 
-          // Fetch data for current location
           try {
             const locationData = await getLocationAQI(lat, lon);
             setSearchedLocation({
@@ -169,7 +161,6 @@ const MapView: React.FC<MapViewProps> = ({
               address: locationData.location?.address || 'Current Location'
             });
 
-            // Notify parent
             if (onLocationChange) {
               onLocationChange(lat, lon, locationData.location?.address || 'Current Location');
             }

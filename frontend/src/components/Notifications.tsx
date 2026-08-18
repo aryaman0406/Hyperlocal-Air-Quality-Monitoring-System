@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Bell, BellOff, X, AlertTriangle, Info, CheckCircle } from 'lucide-react';
 
 interface Notification {
@@ -12,44 +12,40 @@ interface Notification {
   aqi?: number;
 }
 
+const initialNotifications: Notification[] = [
+  {
+    id: '1',
+    type: 'critical',
+    title: 'Severe Air Quality Alert',
+    message: 'AQI has reached 310 in your area. Avoid outdoor activities.',
+    timestamp: new Date(Date.now() - 1000 * 60 * 15),
+    read: false,
+    location: 'Anand Vihar',
+    aqi: 310
+  },
+  {
+    id: '2',
+    type: 'warning',
+    title: 'Air Quality Worsening',
+    message: 'AQI increased by 25% in the last hour.',
+    timestamp: new Date(Date.now() - 1000 * 60 * 45),
+    read: false,
+    location: 'ITO'
+  },
+  {
+    id: '3',
+    type: 'info',
+    title: 'Daily Summary Available',
+    message: 'Your air quality report for today is ready.',
+    timestamp: new Date(Date.now() - 1000 * 60 * 120),
+    read: true
+  }
+];
+
 const Notifications: React.FC = () => {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
-
-  useEffect(() => {
-    // Simulate some initial notifications
-    const mockNotifications: Notification[] = [
-      {
-        id: '1',
-        type: 'critical',
-        title: 'Severe Air Quality Alert',
-        message: 'AQI has reached 310 in your area. Avoid outdoor activities.',
-        timestamp: new Date(Date.now() - 1000 * 60 * 15),
-        read: false,
-        location: 'Anand Vihar',
-        aqi: 310
-      },
-      {
-        id: '2',
-        type: 'warning',
-        title: 'Air Quality Worsening',
-        message: 'AQI increased by 25% in the last hour.',
-        timestamp: new Date(Date.now() - 1000 * 60 * 45),
-        read: false,
-        location: 'ITO'
-      },
-      {
-        id: '3',
-        type: 'info',
-        title: 'Daily Summary Available',
-        message: 'Your air quality report for today is ready.',
-        timestamp: new Date(Date.now() - 1000 * 60 * 120),
-        read: true
-      }
-    ];
-    setNotifications(mockNotifications);
-  }, []);
 
   const markAsRead = (id: string) => {
     setNotifications(prev =>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Clock, AlertCircle } from 'lucide-react';
 import { getForecast } from '../services/api';
@@ -13,11 +13,7 @@ const Forecast: React.FC<ForecastProps> = ({ lat, lon }) => {
     const [loading, setLoading] = useState(true);
     const [timeRange, setTimeRange] = useState<'24h' | '48h'>('24h');
 
-    useEffect(() => {
-        loadForecast();
-    }, [lat, lon]);
-
-    const loadForecast = async () => {
+    const loadForecast = useCallback(async () => {
         try {
             setLoading(true);
             const data = await getForecast(lat, lon);
@@ -27,7 +23,11 @@ const Forecast: React.FC<ForecastProps> = ({ lat, lon }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [lat, lon]);
+
+    useEffect(() => {
+        loadForecast();
+    }, [loadForecast]);
 
     if (loading) {
         return (

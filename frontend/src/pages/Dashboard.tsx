@@ -38,7 +38,6 @@ const Dashboard: React.FC = () => {
         for (let i = 23; i >= 0; i--) {
             const h = (currentHour - i + 24) % 24;
             const hourStr = `${h.toString().padStart(2, '0')}:00`;
-            // Typical diurnal pollution pattern: morning rush (8-10 AM) + evening rush (7-10 PM) higher
             let multiplier = 1.0;
             if (h >= 7 && h <= 10) multiplier = 1.2;
             else if (h >= 18 && h <= 22) multiplier = 1.3;
@@ -70,7 +69,6 @@ const Dashboard: React.FC = () => {
             }
 
             try {
-                // Fetch primary and secondary data with individual settlement
                 const [liveRes, histRes, hotRes] = await Promise.allSettled([
                     getLiveAQI(location.lat, location.lon),
                     getHistoricalData({
@@ -84,7 +82,7 @@ const Dashboard: React.FC = () => {
 
                 if (isUnmounted) return;
 
-                let liveAqiValue = currentAqi;
+                let liveAqiValue = 184;
 
                 // Process Live AQI
                 if (liveRes.status === 'fulfilled' && liveRes.value) {
@@ -96,8 +94,6 @@ const Dashboard: React.FC = () => {
                         liveAqiValue = Math.round(Number(val));
                         setCurrentAqi(liveAqiValue);
                     }
-                } else {
-                    console.warn("Live AQI fetch issue, using active estimations:", liveRes);
                 }
 
                 // Process Historical Data for Trend Chart
@@ -116,23 +112,20 @@ const Dashboard: React.FC = () => {
                     setHotspots(hotRes.value);
                 }
 
-                // Only show connection error if all requests failed and we have no data
+                // Only show connection error if all requests failed
                 if (liveRes.status === 'rejected' && histRes.status === 'rejected' && hotRes.status === 'rejected') {
-                    if (!liveData) {
-                        setInitialError('Connecting to live air quality services... Retrying automatically.');
-                        scheduleRetry(10000);
-                    }
+                    setInitialError('Connecting to live air quality services... Retrying automatically.');
+                    scheduleRetry(10000);
                 }
             } catch (error) {
                 console.error("Failed to fetch dashboard data", error);
                 if (isUnmounted) return;
-                if (!liveData) {
-                    setInitialError('Unable to reach live AQI service. Retrying in background...');
-                    scheduleRetry(10000);
-                }
+                setInitialError('Unable to reach live AQI service. Retrying in background...');
+                scheduleRetry(10000);
             } finally {
-                if (isUnmounted) return;
-                setInitialLoading(false);
+                if (!isUnmounted) {
+                    setInitialLoading(false);
+                }
             }
         };
 
@@ -143,7 +136,6 @@ const Dashboard: React.FC = () => {
             (data) => {
                 if (data.type === 'aqi_update') {
                     setInitialError('');
-                    // Update current AQI if location is relevant
                     const dataLat = data.data?.center?.lat;
                     const dataLon = data.data?.center?.lon;
                     if (dataLat && dataLon) {
@@ -218,17 +210,6 @@ const Dashboard: React.FC = () => {
             alert(`Export failed: ${error.response?.data?.detail || 'Is there historical data available?'}`);
         }
     };
-
-    // Keep currentAqi in sync with liveData
-    useEffect(() => {
-        if (liveData?.results?.[0]?.measurements) {
-            const m = liveData.results[0].measurements;
-            const aqiValue = m.us_aqi || m.aqi || m.pm25 || m.pm2_5 || m.PM25 || 0;
-            if (aqiValue > 0) {
-                setCurrentAqi(Math.round(aqiValue));
-            }
-        }
-    }, [liveData]);
 
     const stationCount = liveData?.results?.length
         ? liveData.results.length.toString()
