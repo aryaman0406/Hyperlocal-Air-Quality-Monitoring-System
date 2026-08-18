@@ -1,444 +1,354 @@
-import React, { useState } from 'react';
-import { Settings as SettingsIcon, User, Bell, MapPin, Database, Globe, Palette, Save } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings as SettingsIcon, User, MapPin, Globe, Save, CheckCircle, AlertCircle, Navigation } from 'lucide-react';
+import { getProfile, saveProfile, type UserProfile } from '../services/api';
 
 const Settings: React.FC = () => {
-  const [settings, setSettings] = useState({
-    // User preferences
-    username: 'User',
-    email: 'user@example.com',
-    
-    // Location
-    defaultLocation: 'delhi',
-    autoDetectLocation: true,
-    
-    // Notifications
-    enableNotifications: true,
-    criticalAlerts: true,
-    dailySummary: true,
-    forecastAlerts: false,
-    
-    // Display
-    theme: 'dark',
-    temperatureUnit: 'celsius',
-    language: 'en',
-    
-    // Data
-    cacheEnabled: true,
-    offlineMode: false,
-    dataRetention: '30',
-    
-    // API
-    updateInterval: '5',
-    dataSource: 'openaq'
-  });
+    const [profile, setProfile] = useState<UserProfile>({
+        name: '',
+        city: '',
+        country: '',
+        lat: undefined,
+        lon: undefined,
+    });
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const [errorMsg, setErrorMsg] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
 
-  const handleChange = (key: string, value: any) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-  };
+    // Load existing profile on mount
+    useEffect(() => {
+        const loadProfile = async () => {
+            try {
+                const res = await getProfile();
+                if (res.profile) {
+                    setProfile(prev => ({ ...prev, ...res.profile }));
+                }
+            } catch {
+                // No profile yet — start fresh
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadProfile();
+    }, []);
 
-  const handleSave = () => {
-    localStorage.setItem('appSettings', JSON.stringify(settings));
-    alert('Settings saved successfully!');
-  };
+    const handleChange = (key: keyof UserProfile, value: string | number | undefined) => {
+        setProfile(prev => ({ ...prev, [key]: value }));
+        setSaveStatus('idle');
+    };
 
-  const handleReset = () => {
-    if (confirm('Reset all settings to default?')) {
-      localStorage.removeItem('appSettings');
-      window.location.reload();
-    }
-  };
+    const handleSave = async () => {
+        if (!profile.name?.trim() && !profile.city?.trim()) {
+            setErrorMsg('Please enter at least your name or city.');
+            setSaveStatus('error');
+            return;
+        }
 
-  return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <SettingsIcon size={24} color="#6366f1" />
-        <h2 style={styles.title}>Settings</h2>
-      </div>
+        setSaveStatus('saving');
+        setErrorMsg('');
 
-      {/* User Profile */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <User size={20} color="#6366f1" />
-          <h3 style={styles.sectionTitle}>User Profile</h3>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.label}>Username</label>
-          <input
-            type="text"
-            value={settings.username}
-            onChange={(e) => handleChange('username', e.target.value)}
-            style={styles.input}
-          />
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.label}>Email</label>
-          <input
-            type="email"
-            value={settings.email}
-            onChange={(e) => handleChange('email', e.target.value)}
-            style={styles.input}
-          />
-        </div>
-      </div>
+        try {
+            const profileToSave: UserProfile = {
+                name: profile.name?.trim() || undefined,
+                city: profile.city?.trim() || undefined,
+                country: profile.country?.trim() || undefined,
+                lat: profile.lat,
+                lon: profile.lon,
+            };
+            const res = await saveProfile(profileToSave);
+            // Update with server-geocoded coords if returned
+            if (res.profile) {
+                setProfile(prev => ({ ...prev, ...res.profile }));
+            }
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 3000);
+        } catch (err: any) {
+            setErrorMsg(err?.response?.data?.detail || 'Failed to save profile. Please try again.');
+            setSaveStatus('error');
+        }
+    };
 
-      {/* Location Settings */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <MapPin size={20} color="#6366f1" />
-          <h3 style={styles.sectionTitle}>Location</h3>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.label}>Default City</label>
-          <select
-            value={settings.defaultLocation}
-            onChange={(e) => handleChange('defaultLocation', e.target.value)}
-            style={styles.select}
-          >
-            <option value="delhi">Delhi</option>
-            <option value="mumbai">Mumbai</option>
-            <option value="bangalore">Bangalore</option>
-            <option value="london">London</option>
-            <option value="new_york">New York</option>
-            <option value="tokyo">Tokyo</option>
-            <option value="paris">Paris</option>
-            <option value="singapore">Singapore</option>
-          </select>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              checked={settings.autoDetectLocation}
-              onChange={(e) => handleChange('autoDetectLocation', e.target.checked)}
-              style={styles.checkbox}
-            />
-            <span>Auto-detect location</span>
-          </label>
-        </div>
-      </div>
+    const handleGPS = () => {
+        if (!navigator.geolocation) {
+            setErrorMsg('Geolocation is not supported by your browser.');
+            setSaveStatus('error');
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setProfile(prev => ({
+                    ...prev,
+                    lat: pos.coords.latitude,
+                    lon: pos.coords.longitude,
+                }));
+                setSaveStatus('idle');
+            },
+            () => {
+                setErrorMsg('GPS access denied. You can type your city manually instead.');
+                setSaveStatus('error');
+            }
+        );
+    };
 
-      {/* Notification Settings */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <Bell size={20} color="#6366f1" />
-          <h3 style={styles.sectionTitle}>Notifications</h3>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              checked={settings.enableNotifications}
-              onChange={(e) => handleChange('enableNotifications', e.target.checked)}
-              style={styles.checkbox}
-            />
-            <span>Enable notifications</span>
-          </label>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              checked={settings.criticalAlerts}
-              onChange={(e) => handleChange('criticalAlerts', e.target.checked)}
-              style={styles.checkbox}
-              disabled={!settings.enableNotifications}
-            />
-            <span>Critical alerts (AQI {'>'} 300)</span>
-          </label>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              checked={settings.dailySummary}
-              onChange={(e) => handleChange('dailySummary', e.target.checked)}
-              style={styles.checkbox}
-              disabled={!settings.enableNotifications}
-            />
-            <span>Daily summary</span>
-          </label>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              checked={settings.forecastAlerts}
-              onChange={(e) => handleChange('forecastAlerts', e.target.checked)}
-              style={styles.checkbox}
-              disabled={!settings.enableNotifications}
-            />
-            <span>Forecast alerts</span>
-          </label>
-        </div>
-      </div>
+    return (
+        <div style={containerStyle}>
+            {/* Header */}
+            <div style={headerStyle}>
+                <SettingsIcon size={22} color="#6366f1" />
+                <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Settings</h2>
+            </div>
 
-      {/* Display Settings */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <Palette size={20} color="#6366f1" />
-          <h3 style={styles.sectionTitle}>Display</h3>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.label}>Theme</label>
-          <select
-            value={settings.theme}
-            onChange={(e) => handleChange('theme', e.target.value)}
-            style={styles.select}
-          >
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="auto">Auto</option>
-          </select>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.label}>Temperature Unit</label>
-          <select
-            value={settings.temperatureUnit}
-            onChange={(e) => handleChange('temperatureUnit', e.target.value)}
-            style={styles.select}
-          >
-            <option value="celsius">Celsius (°C)</option>
-            <option value="fahrenheit">Fahrenheit (°F)</option>
-          </select>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.label}>Language</label>
-          <select
-            value={settings.language}
-            onChange={(e) => handleChange('language', e.target.value)}
-            style={styles.select}
-          >
-            <option value="en">English</option>
-            <option value="hi">हिन्दी (Hindi)</option>
-            <option value="es">Español (Spanish)</option>
-            <option value="fr">Français (French)</option>
-            <option value="de">Deutsch (German)</option>
-            <option value="ja">日本語 (Japanese)</option>
-            <option value="zh">中文 (Chinese)</option>
-          </select>
-        </div>
-      </div>
+            {isLoading ? (
+                <div style={{ padding: '2rem', color: 'var(--text-muted)', textAlign: 'center' }}>Loading profile…</div>
+            ) : (
+                <>
+                    {/* User Profile Section */}
+                    <section style={sectionStyle}>
+                        <div style={sectionHeaderStyle}>
+                            <User size={18} color="#6366f1" />
+                            <h3 style={sectionTitleStyle}>User Profile</h3>
+                        </div>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem', marginTop: 0 }}>
+                            Your profile is stored on the server. Your city is used as the default location
+                            when you open the app.
+                        </p>
 
-      {/* Data Settings */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <Database size={20} color="#6366f1" />
-          <h3 style={styles.sectionTitle}>Data & Storage</h3>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              checked={settings.cacheEnabled}
-              onChange={(e) => handleChange('cacheEnabled', e.target.checked)}
-              style={styles.checkbox}
-            />
-            <span>Enable cache</span>
-          </label>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              checked={settings.offlineMode}
-              onChange={(e) => handleChange('offlineMode', e.target.checked)}
-              style={styles.checkbox}
-            />
-            <span>Offline mode</span>
-          </label>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.label}>Data Retention (days)</label>
-          <select
-            value={settings.dataRetention}
-            onChange={(e) => handleChange('dataRetention', e.target.value)}
-            style={styles.select}
-          >
-            <option value="7">7 days</option>
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-            <option value="365">1 year</option>
-          </select>
-        </div>
-      </div>
+                        <div style={fieldGroupStyle}>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Display Name</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Aryaman"
+                                    value={profile.name ?? ''}
+                                    onChange={e => handleChange('name', e.target.value)}
+                                    style={inputStyle}
+                                />
+                            </div>
+                        </div>
 
-      {/* API Settings */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <Globe size={20} color="#6366f1" />
-          <h3 style={styles.sectionTitle}>API & Updates</h3>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.label}>Update Interval (minutes)</label>
-          <select
-            value={settings.updateInterval}
-            onChange={(e) => handleChange('updateInterval', e.target.value)}
-            style={styles.select}
-          >
-            <option value="1">1 minute</option>
-            <option value="5">5 minutes</option>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-          </select>
-        </div>
-        <div style={styles.settingGroup}>
-          <label style={styles.label}>Data Source</label>
-          <select
-            value={settings.dataSource}
-            onChange={(e) => handleChange('dataSource', e.target.value)}
-            style={styles.select}
-          >
-            <option value="openaq">OpenAQ</option>
-            <option value="government">Government API</option>
-            <option value="multiple">Multiple Sources</option>
-          </select>
-        </div>
-      </div>
+                        <div style={fieldGroupStyle}>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>City</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Mumbai"
+                                    value={profile.city ?? ''}
+                                    onChange={e => handleChange('city', e.target.value)}
+                                    style={inputStyle}
+                                />
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                    The city will be geocoded to coordinates automatically.
+                                </span>
+                            </div>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Country</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. India"
+                                    value={profile.country ?? ''}
+                                    onChange={e => handleChange('country', e.target.value)}
+                                    style={inputStyle}
+                                />
+                            </div>
+                        </div>
 
-      {/* Action Buttons */}
-      <div style={styles.actions}>
-        <button style={styles.saveButton} onClick={handleSave}>
-          <Save size={18} />
-          <span>Save Settings</span>
-        </button>
-        <button style={styles.resetButton} onClick={handleReset}>
-          Reset to Default
-        </button>
-      </div>
+                        {/* Coordinates */}
+                        <div style={sectionHeaderStyle}>
+                            <MapPin size={16} color="#38bdf8" />
+                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Home Coordinates (optional)</h4>
+                        </div>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: '1rem', marginTop: '0.25rem' }}>
+                            Set your precise home coordinates for more accurate local data.
+                        </p>
 
-      {/* App Info */}
-      <div style={styles.appInfo}>
-        <p style={styles.infoText}>Air Quality Monitor v2.0</p>
-        <p style={styles.infoText}>Global Edition</p>
-        <p style={styles.infoText}>© 2025 - Built with ❤️</p>
-      </div>
-    </div>
-  );
+                        <div style={fieldGroupStyle}>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Latitude</label>
+                                <input
+                                    type="number"
+                                    step="0.0001"
+                                    placeholder="e.g. 19.0760"
+                                    value={profile.lat ?? ''}
+                                    onChange={e => handleChange('lat', e.target.value ? parseFloat(e.target.value) : undefined)}
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Longitude</label>
+                                <input
+                                    type="number"
+                                    step="0.0001"
+                                    placeholder="e.g. 72.8777"
+                                    value={profile.lon ?? ''}
+                                    onChange={e => handleChange('lon', e.target.value ? parseFloat(e.target.value) : undefined)}
+                                    style={inputStyle}
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleGPS}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.5rem 1rem', borderRadius: '8px',
+                                background: 'rgba(56,189,248,0.12)',
+                                border: '1px solid rgba(56,189,248,0.3)',
+                                color: '#38bdf8', cursor: 'pointer', fontSize: '0.85rem',
+                                marginBottom: '1.5rem', fontWeight: 500,
+                            }}
+                        >
+                            <Navigation size={14} />
+                            Use My Current GPS Location
+                        </button>
+
+                        {profile.lat !== undefined && profile.lon !== undefined && profile.lat !== null && profile.lon !== null && (
+                            <div style={{
+                                fontSize: '0.75rem', color: '#64748b',
+                                background: 'rgba(100,116,139,0.08)',
+                                padding: '0.5rem 0.75rem', borderRadius: '6px',
+                                marginBottom: '1rem',
+                            }}>
+                                📍 Coordinates set: {Number(profile.lat).toFixed(4)}, {Number(profile.lon).toFixed(4)}
+                            </div>
+                        )}
+                    </section>
+
+                    {/* Data Source Info */}
+                    <section style={sectionStyle}>
+                        <div style={sectionHeaderStyle}>
+                            <Globe size={18} color="#a78bfa" />
+                            <h3 style={sectionTitleStyle}>Data Sources</h3>
+                        </div>
+                        <div style={{ display: 'grid', gap: '0.75rem' }}>
+                            {[
+                                { name: 'Open-Meteo Weather API', desc: 'Current weather: temperature, humidity, wind, condition', status: 'Active', color: '#22c55e' },
+                                { name: 'Open-Meteo Air Quality API', desc: 'US AQI, PM2.5, PM10, O₃, NO₂, SO₂, CO from CAMS', status: 'Active', color: '#22c55e' },
+                                { name: 'Copernicus CAMS', desc: 'Atmospheric model data powering the AQI readings', status: 'Active', color: '#22c55e' },
+                                { name: 'OpenStreetMap / Nominatim', desc: 'Geocoding and reverse geocoding (address lookup)', status: 'Active', color: '#22c55e' },
+                            ].map((src, i) => (
+                                <div key={i} style={{
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                    padding: '0.75rem 1rem', borderRadius: '8px',
+                                    background: 'rgba(255,255,255,0.03)',
+                                    border: '1px solid rgba(255,255,255,0.06)',
+                                }}>
+                                    <div>
+                                        <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{src.name}</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{src.desc}</div>
+                                    </div>
+                                    <span style={{
+                                        fontSize: '0.7rem', fontWeight: 600, color: src.color,
+                                        background: `${src.color}18`, borderRadius: '4px', padding: '0.15rem 0.5rem',
+                                    }}>
+                                        {src.status}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                        <p style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.75rem' }}>
+                            ℹ️ All data is from atmospheric models (CAMS) and weather forecast models. This is not real ground sensor data.
+                            Accuracy varies by region and reflects model output, not local measurements.
+                        </p>
+                    </section>
+
+                    {/* Status + Save */}
+                    {saveStatus === 'error' && errorMsg && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem',
+                            padding: '0.75rem 1rem', borderRadius: '8px',
+                            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                            color: '#fca5a5', marginBottom: '1rem', fontSize: '0.875rem',
+                        }}>
+                            <AlertCircle size={16} />
+                            {errorMsg}
+                        </div>
+                    )}
+
+                    {saveStatus === 'saved' && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem',
+                            padding: '0.75rem 1rem', borderRadius: '8px',
+                            background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+                            color: '#86efac', marginBottom: '1rem', fontSize: '0.875rem',
+                        }}>
+                            <CheckCircle size={16} />
+                            Profile saved successfully!
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <button
+                            onClick={handleSave}
+                            disabled={saveStatus === 'saving'}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.75rem 1.5rem', borderRadius: '10px',
+                                background: saveStatus === 'saved' ? 'rgba(34,197,94,0.2)' : 'var(--primary)',
+                                border: 'none', color: 'white', cursor: saveStatus === 'saving' ? 'not-allowed' : 'pointer',
+                                fontSize: '0.9rem', fontWeight: 600, opacity: saveStatus === 'saving' ? 0.7 : 1,
+                                transition: 'all 0.2s ease',
+                            }}
+                        >
+                            <Save size={16} />
+                            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved ✓' : 'Save Profile'}
+                        </button>
+                    </div>
+                </>
+            )}
+        </div>
+    );
 };
 
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    padding: '2rem',
-    maxWidth: '800px',
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const containerStyle: React.CSSProperties = {
+    maxWidth: '760px',
     margin: '0 auto',
-    color: '#fff'
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-    marginBottom: '2rem'
-  },
-  title: {
-    fontSize: '1.5rem',
-    fontWeight: '600',
-    margin: 0
-  },
-  section: {
-    background: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '12px',
-    padding: '1.5rem',
+    padding: '2rem',
+};
+
+const headerStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: '0.75rem',
+    marginBottom: '2rem', paddingBottom: '1rem',
+    borderBottom: '1px solid rgba(255,255,255,0.08)',
+};
+
+const sectionStyle: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.07)',
+    borderRadius: '14px', padding: '1.5rem',
     marginBottom: '1.5rem',
-    border: '1px solid rgba(255, 255, 255, 0.1)'
-  },
-  sectionHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    marginBottom: '1.5rem'
-  },
-  sectionTitle: {
-    fontSize: '1.125rem',
-    fontWeight: '600',
-    margin: 0
-  },
-  settingGroup: {
-    marginBottom: '1rem'
-  },
-  label: {
-    display: 'block',
-    fontSize: '0.875rem',
-    color: '#9ca3af',
-    marginBottom: '0.5rem'
-  },
-  input: {
-    width: '100%',
-    padding: '0.75rem',
-    background: 'rgba(0, 0, 0, 0.3)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '0.875rem',
-    boxSizing: 'border-box' as const
-  },
-  select: {
-    width: '100%',
-    padding: '0.75rem',
-    background: 'rgba(0, 0, 0, 0.3)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '0.875rem',
-    boxSizing: 'border-box' as const,
-    cursor: 'pointer'
-  },
-  toggleLabel: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    fontSize: '0.875rem',
-    color: '#d1d5db',
-    cursor: 'pointer'
-  },
-  checkbox: {
-    width: '18px',
-    height: '18px',
-    cursor: 'pointer'
-  },
-  actions: {
-    display: 'flex',
-    gap: '1rem',
-    marginTop: '2rem'
-  },
-  saveButton: {
-    flex: 1,
-    padding: '0.75rem 1.5rem',
-    background: '#6366f1',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '1rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '0.5rem',
-    transition: 'background 0.2s'
-  },
-  resetButton: {
-    padding: '0.75rem 1.5rem',
-    background: 'rgba(239, 68, 68, 0.1)',
-    border: '1px solid rgba(239, 68, 68, 0.3)',
-    borderRadius: '8px',
-    color: '#ef4444',
-    fontSize: '1rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'background 0.2s'
-  },
-  appInfo: {
-    marginTop: '3rem',
-    padding: '1.5rem',
-    background: 'rgba(99, 102, 241, 0.05)',
-    borderRadius: '8px',
-    textAlign: 'center' as const
-  },
-  infoText: {
-    fontSize: '0.875rem',
-    color: '#9ca3af',
-    margin: '0.25rem 0'
-  }
+};
+
+const sectionHeaderStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: '0.5rem',
+    marginBottom: '1rem',
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+    margin: 0, fontSize: '1rem', fontWeight: 600,
+};
+
+const fieldGroupStyle: React.CSSProperties = {
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '1rem', marginBottom: '1.25rem',
+};
+
+const fieldStyle: React.CSSProperties = {
+    display: 'flex', flexDirection: 'column', gap: '0.35rem',
+};
+
+const labelStyle: React.CSSProperties = {
+    fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+};
+
+const inputStyle: React.CSSProperties = {
+    padding: '0.6rem 0.9rem',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '8px', color: '#fff',
+    fontSize: '0.9rem', outline: 'none',
+    transition: 'border-color 0.2s ease',
 };
 
 export default Settings;

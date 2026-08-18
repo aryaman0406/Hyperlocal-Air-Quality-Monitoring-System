@@ -173,17 +173,17 @@ const Favorites: React.FC = () => {
                                     {fav.lat.toFixed(4)}, {fav.lon.toFixed(4)}
                                 </p>
                             </div>
-                            {fav.current_aqi !== undefined && (
+                            {fav.current_aqi !== undefined && fav.current_aqi !== null && (
                                 <div
                                     style={{
                                         padding: '0.5rem 1rem',
                                         borderRadius: '0.375rem',
-                                        background: getAqiColor(fav.current_aqi),
+                                        background: getAqiColor(fav.current_aqi ?? undefined),
                                         fontWeight: 600,
                                         marginRight: '0.5rem'
                                     }}
                                 >
-                                    AQI: {Math.round(fav.current_aqi)}
+                                    AQI: {Math.round(fav.current_aqi!)}
                                 </div>
                             )}
                             <button

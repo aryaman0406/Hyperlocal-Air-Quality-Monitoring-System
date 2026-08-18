@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Search, Navigation, ZoomIn, ZoomOut, Thermometer, Wind, ShieldAlert, Sparkles, MapPin } from 'lucide-react';
-import { getAQIGrid, geocodeLocation, getLocationAQI } from '../services/api';
+import { getAQIGrid, geocodeLocation, getLocationData } from '../services/api';
 
 interface MapViewProps {
   centerLat?: number;
@@ -11,50 +11,22 @@ interface MapViewProps {
   onLocationChange?: (lat: number, lon: number, address?: string) => void;
 }
 
-interface LocationData {
+interface PinnedLocation {
   lat: number;
   lon: number;
-  aqi: number;
-  temperature?: number;
-  address?: string;
-  weather?: string;
+  aqi: number | null;
+  temperature: number | null;
+  feels_like: number | null;
+  humidity: number | null;
+  condition: string | null;
+  pm25: number | null;
+  pm10: number | null;
+  address: string;
+  aq_available: boolean;
+  wx_available: boolean;
 }
 
-const QUICK_CITIES = [
-  { name: 'Delhi', lat: 28.6139, lon: 77.2090, label: '🇮🇳 Delhi' },
-  { name: 'Mumbai', lat: 19.0760, lon: 72.8777, label: '🇮🇳 Mumbai' },
-  { name: 'London', lat: 51.5074, lon: -0.1278, label: '🇬🇧 London' },
-  { name: 'New York', lat: 40.7128, lon: -74.0060, label: '🇺🇸 New York' },
-  { name: 'Tokyo', lat: 35.6762, lon: 139.6503, label: '🇯🇵 Tokyo' },
-  { name: 'Dubai', lat: 25.2048, lon: 55.2708, label: '🇦🇪 Dubai' },
-  { name: 'Paris', lat: 48.8566, lon: 2.3522, label: '🇫🇷 Paris' },
-  { name: 'Singapore', lat: 1.3521, lon: 103.8198, label: '🇸🇬 Singapore' },
-];
 
-const generateLocalGrid = (centerLat: number, centerLon: number, radiusKm: number = 8) => {
-  const points = [];
-  const steps = 4;
-  const latDelta = (radiusKm / 111.0) / steps;
-  const lonDelta = (radiusKm / (111.0 * Math.max(0.1, Math.cos(centerLat * Math.PI / 180)))) / steps;
-
-  for (let dx = -steps; dx <= steps; dx++) {
-    for (let dy = -steps; dy <= steps; dy++) {
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist <= steps) {
-        const lat = centerLat + dx * latDelta;
-        const lon = centerLon + dy * lonDelta;
-        const baseAqi = 145 + 55 * Math.exp(-dist / 2.5);
-        const noise = Math.sin(lat * 60) * Math.cos(lon * 60) * 12;
-        points.push({
-          lat,
-          lon,
-          aqi: Math.max(25, Math.round(baseAqi + noise))
-        });
-      }
-    }
-  }
-  return points;
-};
 
 const MapControls: React.FC<{ onZoomIn: () => void; onZoomOut: () => void }> = ({ onZoomIn, onZoomOut }) => {
   return (
@@ -92,44 +64,14 @@ const MapView: React.FC<MapViewProps> = ({
   zoom: initialZoom = 11,
   onLocationChange
 }) => {
-  const [gridData, setGridData] = useState<any[]>(() => generateLocalGrid(centerLat, centerLon));
+  const [gridData, setGridData] = useState<any[]>([]);
   const [center, setCenter] = useState<[number, number]>([centerLat, centerLon]);
   const [zoom, setZoom] = useState(initialZoom);
   const [searchQuery, setSearchQuery] = useState('');
   const [mapStyle, setMapStyle] = useState('dark');
   const [loading, setLoading] = useState(false);
-  const [searchedLocation, setSearchedLocation] = useState<LocationData | null>({
-    lat: centerLat,
-    lon: centerLon,
-    aqi: 184,
-    temperature: 26.6,
-    address: 'Delhi, India',
-    weather: 'light drizzle'
-  });
+  const [pinnedLocation, setPinnedLocation] = useState<PinnedLocation | null>(null);
   const [searchFeedback, setSearchFeedback] = useState<string>('');
-
-  const fetchGridData = useCallback(async () => {
-    try {
-      const data = await getAQIGrid(center[0], center[1], 8);
-      if (data && data.grid && data.grid.length > 0) {
-        setGridData(data.grid);
-      } else {
-        setGridData(generateLocalGrid(center[0], center[1]));
-      }
-    } catch {
-      setGridData(generateLocalGrid(center[0], center[1]));
-    }
-  }, [center]);
-
-  useEffect(() => {
-    fetchGridData();
-  }, [fetchGridData]);
-
-  useEffect(() => {
-    if (centerLat && centerLon) {
-      setCenter([centerLat, centerLon]);
-    }
-  }, [centerLat, centerLon]);
 
   const getAqiColor = (aqi: number) => {
     if (aqi <= 50) return '#10b981';
@@ -149,25 +91,29 @@ const MapView: React.FC<MapViewProps> = ({
     return 'Hazardous';
   };
 
-  const selectCoordinates = async (lat: number, lon: number, customAddress?: string) => {
+  const selectCoordinates = useCallback(async (lat: number, lon: number, customAddress?: string) => {
     setLoading(true);
     setCenter([lat, lon]);
-    setZoom(12);
 
     try {
-      const locationData = await getLocationAQI(lat, lon);
-      const addr = customAddress || locationData.location?.address || `Coordinates: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-      const aqi = locationData.aqi || 150;
-      const temperature = locationData.temperature !== undefined ? locationData.temperature : 25.0;
-      const weather = locationData.weather?.weather || 'Partly Cloudy';
+      const data = await getLocationData(lat, lon);
+      const addr = customAddress || data.location?.address || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      const wx = data.weather;
+      const poll = data.pollutants;
 
-      setSearchedLocation({
+      setPinnedLocation({
         lat,
         lon,
-        aqi,
-        temperature,
+        aqi: data.aqi ?? null,
+        temperature: wx?.temperature ?? null,
+        feels_like: wx?.feels_like ?? null,
+        humidity: wx?.humidity ?? null,
+        condition: wx?.condition ?? null,
+        pm25: poll?.pm2_5 ?? null,
+        pm10: poll?.pm10 ?? null,
         address: addr,
-        weather
+        aq_available: data.aq_available,
+        wx_available: data.wx_available,
       });
 
       if (onLocationChange) {
@@ -175,15 +121,12 @@ const MapView: React.FC<MapViewProps> = ({
       }
       setSearchFeedback('');
     } catch (error) {
-      console.error("Location select error:", error);
-      const addr = customAddress || `Location (${lat.toFixed(3)}, ${lon.toFixed(3)})`;
-      setSearchedLocation({
-        lat,
-        lon,
-        aqi: 145,
-        temperature: 26.0,
-        address: addr,
-        weather: 'Fair'
+      console.error('[Map] selectCoordinates error:', error);
+      const addr = customAddress || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      setPinnedLocation({
+        lat, lon, aqi: null, temperature: null, feels_like: null,
+        humidity: null, condition: null, pm25: null, pm10: null,
+        address: addr, aq_available: false, wx_available: false,
       });
       if (onLocationChange) {
         onLocationChange(lat, lon, addr);
@@ -191,7 +134,33 @@ const MapView: React.FC<MapViewProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [onLocationChange]);
+
+  const fetchGridData = useCallback(async () => {
+    try {
+      const data = await getAQIGrid(center[0], center[1], 10);
+      if (data?.available && data.grid?.length > 0) {
+        setGridData(data.grid);
+      } else {
+        // Grid data unavailable — show empty grid rather than fake data
+        setGridData([]);
+      }
+    } catch {
+      setGridData([]);
+    }
+  }, [center]);
+
+  useEffect(() => {
+    fetchGridData();
+  }, [fetchGridData]);
+
+  // When center coordinates change from parent, update map and fetch data
+  useEffect(() => {
+    if (centerLat && centerLon) {
+      setCenter([centerLat, centerLon]);
+      selectCoordinates(centerLat, centerLon);
+    }
+  }, [centerLat, centerLon]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
@@ -206,15 +175,16 @@ const MapView: React.FC<MapViewProps> = ({
 
       if (geocodeResult && geocodeResult.lat && geocodeResult.lon) {
         const { lat, lon, address } = geocodeResult;
+        setZoom(12);
         await selectCoordinates(lat, lon, address);
         setSearchQuery('');
       } else {
-        setSearchFeedback('Location not found. Showing nearby global match...');
+        setSearchFeedback(`Could not find "${searchQuery}". Please check the spelling or try another city.`);
         setTimeout(() => setSearchFeedback(''), 4000);
       }
     } catch (error) {
       console.error('Search error:', error);
-      setSearchFeedback('Unable to reach geocoding service. Try another query.');
+      setSearchFeedback('Search service is temporarily busy. Please retry.');
       setTimeout(() => setSearchFeedback(''), 4000);
     } finally {
       setLoading(false);
@@ -228,10 +198,11 @@ const MapView: React.FC<MapViewProps> = ({
         async (position) => {
           const lat = position.coords.latitude;
           const lon = position.coords.longitude;
+          setZoom(13);
           await selectCoordinates(lat, lon, 'Your Current Location');
         },
         () => {
-          setSearchFeedback('Location access was denied. You can search any city instead.');
+          setSearchFeedback('Location access was denied. You can search any city in the search bar.');
           setTimeout(() => setSearchFeedback(''), 4000);
           setLoading(false);
         }
@@ -250,22 +221,22 @@ const MapView: React.FC<MapViewProps> = ({
 
   const avgAqi = gridData.length > 0
     ? Math.round(gridData.reduce((sum, p) => sum + p.aqi, 0) / gridData.length)
-    : 154;
+    : (pinnedLocation?.aqi ?? null);
 
   const maxAqi = gridData.length > 0
     ? Math.round(Math.max(...gridData.map(p => p.aqi)))
-    : 210;
+    : null;
 
   return (
     <div style={styles.container}>
-      {/* Top Header & Search Bar */}
+      {/* Top Search Bar */}
       <div style={styles.topControlPanel}>
         <div style={styles.searchBar}>
           <div style={styles.searchInputWrapper}>
             <Search size={18} color="#94a3b8" />
             <input
               type="text"
-              placeholder="Search any place worldwide (e.g. Mumbai, Tokyo, New York, Paris)..."
+              placeholder="Search any city, town, or address worldwide..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -295,20 +266,6 @@ const MapView: React.FC<MapViewProps> = ({
             <option value="satellite">Satellite</option>
           </select>
         </div>
-
-        {/* Quick City Navigation Chips */}
-        <div style={styles.cityChipsRow}>
-          <span style={styles.quickLabel}>Explore Cities:</span>
-          {QUICK_CITIES.map((city) => (
-            <button
-              key={city.name}
-              style={styles.cityChip}
-              onClick={() => selectCoordinates(city.lat, city.lon, city.name)}
-            >
-              {city.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Search Feedback Banner */}
@@ -320,29 +277,29 @@ const MapView: React.FC<MapViewProps> = ({
       )}
 
       {/* Selected Location Card (AQI + Temperature) */}
-      {searchedLocation && (
+      {pinnedLocation && (
         <div style={styles.locationInfo}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
             <MapPin size={18} color="#6366f1" />
-            <h4 style={styles.locationTitle}>Live Location Insight</h4>
+            <h4 style={styles.locationTitle}>Live Location Data</h4>
           </div>
           <div style={styles.locationDetail}>
-            <strong>{searchedLocation.address}</strong>
+            <strong>{pinnedLocation.address}</strong>
           </div>
 
           <div style={styles.locationStats}>
             {/* AQI Metric */}
             <div style={styles.locationStat}>
               <div style={styles.metricIconWrap}>
-                <Wind size={20} color={getAqiColor(searchedLocation.aqi)} />
+                <Wind size={20} color={pinnedLocation.aqi !== null ? getAqiColor(pinnedLocation.aqi) : '#64748b'} />
               </div>
               <div>
-                <div style={styles.locStatLabel}>Air Quality</div>
-                <div style={{ ...styles.locStatValue, color: getAqiColor(searchedLocation.aqi) }}>
-                  {Math.round(searchedLocation.aqi)} <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>AQI</span>
+                <div style={styles.locStatLabel}>US AQI (EPA)</div>
+                <div style={{ ...styles.locStatValue, color: pinnedLocation.aqi !== null ? getAqiColor(pinnedLocation.aqi) : '#64748b' }}>
+                  {pinnedLocation.aqi !== null ? Math.round(pinnedLocation.aqi) : '—'}
                 </div>
-                <div style={{ ...styles.statCategory, color: getAqiColor(searchedLocation.aqi) }}>
-                  {getAqiCategory(searchedLocation.aqi)}
+                <div style={{ ...styles.statCategory, color: pinnedLocation.aqi !== null ? getAqiColor(pinnedLocation.aqi) : '#64748b' }}>
+                  {pinnedLocation.aqi !== null ? getAqiCategory(pinnedLocation.aqi) : (pinnedLocation.aq_available ? 'Unknown' : 'Data unavailable')}
                 </div>
               </div>
             </div>
@@ -355,24 +312,34 @@ const MapView: React.FC<MapViewProps> = ({
               <div>
                 <div style={styles.locStatLabel}>Temperature</div>
                 <div style={styles.locStatValue}>
-                  {searchedLocation.temperature !== undefined ? `${searchedLocation.temperature}°C` : '26°C'}
+                  {pinnedLocation.temperature !== null ? `${pinnedLocation.temperature}°C` : '—'}
                 </div>
                 <div style={styles.statCategory}>
-                  {searchedLocation.temperature !== undefined
-                    ? `${(searchedLocation.temperature * 9 / 5 + 32).toFixed(1)}°F`
-                    : '78.8°F'}
-                  {searchedLocation.weather ? ` • ${searchedLocation.weather}` : ''}
+                  {pinnedLocation.temperature !== null
+                    ? `${(pinnedLocation.temperature * 9 / 5 + 32).toFixed(1)}°F`
+                    : ''}
+                  {pinnedLocation.condition ? ` • ${pinnedLocation.condition}` : ''}
                 </div>
               </div>
             </div>
           </div>
 
+          {pinnedLocation.pm25 !== null && (
+            <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.4rem' }}>
+              PM2.5: {pinnedLocation.pm25} μg/m³ &nbsp;·&nbsp; PM10: {pinnedLocation.pm10 ?? '—'} μg/m³
+            </div>
+          )}
+
           <div style={styles.healthBanner}>
-            <ShieldAlert size={14} color="#f59e0b" />
+            <ShieldAlert size={14} color={pinnedLocation.aqi !== null && pinnedLocation.aqi > 100 ? '#ef4444' : '#10b981'} />
             <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
-              {searchedLocation.aqi > 150
+              {!pinnedLocation.aq_available
+                ? 'Air quality data temporarily unavailable for this location.'
+                : pinnedLocation.aqi !== null && pinnedLocation.aqi > 150
                 ? 'Sensitive individuals should limit prolonged outdoor exertion.'
-                : 'Air quality is acceptable for most outdoor activities.'}
+                : pinnedLocation.aqi !== null && pinnedLocation.aqi > 100
+                ? 'Moderate pollution. Sensitive groups should reduce outdoor exercise.'
+                : 'Air quality is satisfactory and safe for outdoor activities.'}
             </span>
           </div>
         </div>
@@ -392,13 +359,13 @@ const MapView: React.FC<MapViewProps> = ({
         <MapViewController center={center} zoom={zoom} />
         <MapClickHandler onMapClick={(lat, lon) => selectCoordinates(lat, lon)} />
 
-        {/* Selected Location Center Marker */}
-        {searchedLocation && (
+        {/* Pinned Location Marker */}
+        {pinnedLocation && (
           <CircleMarker
-            center={[searchedLocation.lat, searchedLocation.lon]}
+            center={[pinnedLocation.lat, pinnedLocation.lon]}
             radius={16}
             pathOptions={{
-              fillColor: getAqiColor(searchedLocation.aqi),
+              fillColor: pinnedLocation.aqi !== null ? getAqiColor(pinnedLocation.aqi) : '#64748b',
               fillOpacity: 0.95,
               color: '#ffffff',
               weight: 3,
@@ -406,25 +373,30 @@ const MapView: React.FC<MapViewProps> = ({
             }}
           >
             <Popup>
-              <div style={{ color: '#0f172a', minWidth: '220px', padding: '0.25rem' }}>
-                <div style={{ fontWeight: '700', fontSize: '1rem', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  📍 {searchedLocation.address}
+              <div style={{ color: '#0f172a', minWidth: '230px', padding: '0.25rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.35rem' }}>
+                  📍 {pinnedLocation.address}
                 </div>
                 <div style={{
-                  color: getAqiColor(searchedLocation.aqi),
-                  fontWeight: '700',
-                  fontSize: '1.1rem',
-                  marginBottom: '0.35rem'
+                  color: pinnedLocation.aqi !== null ? getAqiColor(pinnedLocation.aqi) : '#64748b',
+                  fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.2rem'
                 }}>
-                  AQI: {Math.round(searchedLocation.aqi)} ({getAqiCategory(searchedLocation.aqi)})
+                  {pinnedLocation.aqi !== null ? `US AQI: ${Math.round(pinnedLocation.aqi)}` : 'US AQI: N/A'}
                 </div>
-                <div style={{ fontSize: '0.9rem', marginBottom: '0.25rem', color: '#334155' }}>
-                  🌡️ <strong>{searchedLocation.temperature !== undefined ? `${searchedLocation.temperature}°C` : '26°C'}</strong> (
-                  {searchedLocation.temperature !== undefined ? (searchedLocation.temperature * 9 / 5 + 32).toFixed(1) : 78.8}°F)
-                  {searchedLocation.weather && ` • ${searchedLocation.weather}`}
+                <div style={{ fontSize: '0.8rem', color: '#475569', marginBottom: '0.3rem' }}>
+                  {pinnedLocation.aqi !== null ? getAqiCategory(pinnedLocation.aqi) : 'Data unavailable'}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.35rem' }}>
-                  Lat: {searchedLocation.lat.toFixed(4)}, Lon: {searchedLocation.lon.toFixed(4)}
+                <div style={{ fontSize: '0.85rem', color: '#334155', marginBottom: '0.2rem' }}>
+                  🌡️ {pinnedLocation.temperature !== null ? `${pinnedLocation.temperature}°C` : '—'}
+                  {pinnedLocation.condition ? ` · ${pinnedLocation.condition}` : ''}
+                </div>
+                {pinnedLocation.pm25 !== null && (
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    PM2.5: {pinnedLocation.pm25} μg/m³ · PM10: {pinnedLocation.pm10 ?? '—'} μg/m³
+                  </div>
+                )}
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.3rem' }}>
+                  {pinnedLocation.lat.toFixed(4)}, {pinnedLocation.lon.toFixed(4)} · Source: Open-Meteo/CAMS
                 </div>
               </div>
             </Popup>
@@ -446,15 +418,18 @@ const MapView: React.FC<MapViewProps> = ({
             }}
           >
             <Popup>
-              <div style={{ color: '#0f172a', minWidth: '160px', padding: '0.25rem' }}>
-                <div style={{ fontWeight: '700', fontSize: '1.05rem', color: getAqiColor(point.aqi) }}>
-                  AQI: {Math.round(point.aqi)}
+              <div style={{ color: '#0f172a', minWidth: '170px', padding: '0.25rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '1rem', color: getAqiColor(point.aqi) }}>
+                  US AQI: {Math.round(point.aqi)}
                 </div>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '0.25rem' }}>
                   {getAqiCategory(point.aqi)}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                  📍 {point.lat.toFixed(4)}, {point.lon.toFixed(4)}
+                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                  {point.lat.toFixed(4)}, {point.lon.toFixed(4)}
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                  Source: Open-Meteo / CAMS
                 </div>
               </div>
             </Popup>
@@ -491,21 +466,21 @@ const MapView: React.FC<MapViewProps> = ({
 
       {/* Live View Stats Panel */}
       <div style={styles.statsPanel}>
-        <h4 style={styles.statsTitle}>Active Map View</h4>
+        <h4 style={styles.statsTitle}>Map View · US AQI</h4>
         <div style={styles.stat}>
-          <span style={styles.statLabel}>Locations</span>
-          <span style={styles.statValue}>{gridData.length}</span>
+          <span style={styles.statLabel}>Grid Points</span>
+          <span style={styles.statValue}>{gridData.length > 0 ? gridData.length : '—'}</span>
         </div>
         <div style={styles.stat}>
           <span style={styles.statLabel}>Avg AQI</span>
-          <span style={{ ...styles.statValue, color: getAqiColor(avgAqi) }}>
-            {avgAqi}
+          <span style={{ ...styles.statValue, color: avgAqi !== null ? getAqiColor(avgAqi) : '#64748b' }}>
+            {avgAqi !== null ? avgAqi : '—'}
           </span>
         </div>
         <div style={styles.stat}>
           <span style={styles.statLabel}>Peak AQI</span>
-          <span style={{ ...styles.statValue, color: getAqiColor(maxAqi) }}>
-            {maxAqi}
+          <span style={{ ...styles.statValue, color: maxAqi !== null ? getAqiColor(maxAqi) : '#64748b' }}>
+            {maxAqi !== null ? maxAqi : '—'}
           </span>
         </div>
       </div>
@@ -513,7 +488,7 @@ const MapView: React.FC<MapViewProps> = ({
       {loading && (
         <div style={styles.loader}>
           <div style={styles.loaderSpinner}></div>
-          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Updating live air quality & temperature...</span>
+          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Fetching live global AQI & temperature...</span>
         </div>
       )}
     </div>
@@ -557,7 +532,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '0.65rem',
     border: '1px solid rgba(255, 255, 255, 0.12)',
     boxShadow: '0 10px 25px rgba(0, 0, 0, 0.4)',
-    minWidth: '380px'
+    minWidth: '420px'
   },
   searchInput: {
     border: 'none',
@@ -577,38 +552,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     cursor: 'pointer'
   },
-  cityChipsRow: {
-    display: 'flex',
-    gap: '0.35rem',
-    alignItems: 'center',
-    flexWrap: 'wrap' as const,
-    justifyContent: 'center',
-    background: 'rgba(15, 23, 42, 0.7)',
-    backdropFilter: 'blur(12px)',
-    padding: '0.35rem 0.75rem',
-    borderRadius: '99px',
-    border: '1px solid rgba(255, 255, 255, 0.08)'
-  },
-  quickLabel: {
-    fontSize: '0.7rem',
-    color: '#94a3b8',
-    marginRight: '0.25rem',
-    fontWeight: 500
-  },
-  cityChip: {
-    background: 'rgba(255, 255, 255, 0.08)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '99px',
-    padding: '0.25rem 0.6rem',
-    color: '#e2e8f0',
-    fontSize: '0.75rem',
-    fontWeight: 500,
-    cursor: 'pointer',
-    transition: 'all 0.2s ease'
-  },
   feedbackBanner: {
     position: 'absolute' as const,
-    top: '6.5rem',
+    top: '5.5rem',
     left: '50%',
     transform: 'translateX(-50%)',
     background: 'rgba(30, 41, 59, 0.95)',
@@ -626,7 +572,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   locationInfo: {
     position: 'absolute' as const,
-    top: '6rem',
+    top: '5rem',
     left: '1.5rem',
     background: 'rgba(15, 23, 42, 0.9)',
     backdropFilter: 'blur(20px)',
@@ -794,7 +740,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   statsPanel: {
     position: 'absolute' as const,
-    top: '6rem',
+    top: '5rem',
     right: '2rem',
     background: 'rgba(15, 23, 42, 0.85)',
     backdropFilter: 'blur(16px)',

@@ -1,106 +1,165 @@
-"""Live air-quality provider using Open-Meteo's no-key API with intelligent spatial fallback."""
+"""
+Live air-quality data provider using the Open-Meteo Air Quality API (no API key required).
+Fetches real atmospheric model data for any coordinate on Earth.
+"""
 import asyncio
 from datetime import datetime
 import json
 import os
-import requests
-import numpy as np
+import aiohttp
+from typing import Optional, Dict
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CACHE_DIR = os.path.join(BASE_DIR, "data", "cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
+
+# Fields to request from Open-Meteo Air Quality API
+AQ_CURRENT_FIELDS = (
+    "us_aqi,european_aqi,"
+    "pm2_5,pm10,"
+    "nitrogen_dioxide,sulphur_dioxide,ozone,"
+    "carbon_monoxide"
+)
 
 
 class OpenAQService:
-    """Air quality data provider using Open-Meteo with robust caching and local estimation."""
+    """
+    Fetches real air quality data from the Open-Meteo Air Quality API.
+    No API key required. Covers the entire globe using atmospheric models.
+    Data source: Copernicus Atmosphere Monitoring Service (CAMS) via Open-Meteo.
+    """
 
-    def __init__(self):
-        self.base_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
-        self.lat = 28.6139
-        self.lon = 77.2090
-        self.cache_dir = os.path.join(BASE_DIR, "data", "cache")
-        os.makedirs(self.cache_dir, exist_ok=True)
+    async def get_latest_data(self, lat: float, lon: float) -> Dict:
+        """
+        Fetch current AQI and pollutant concentrations for any global coordinate.
+        Returns structured data with US AQI, European AQI, PM2.5, PM10, O3, NO2, SO2, CO.
+        """
+        target_lat = round(float(lat), 4)
+        target_lon = round(float(lon), 4)
 
-    async def get_latest_data(self, lat: float = None, lon: float = None):
-        """Fetch current AQI and pollutant concentrations without an API key."""
-        target_lat = float(lat) if lat is not None else self.lat
-        target_lon = float(lon) if lon is not None else self.lon
-        
-        # 10-minute cache bucket
-        cache_key = f"latest_aqi_{target_lat:.3f}_{target_lon:.3f}_{datetime.now().strftime('%Y%m%d%H%M')[:-1]}"
-        cache_file = os.path.join(self.cache_dir, f"{cache_key}.json")
+        # 10-minute file cache to avoid hammering the API
+        bucket = datetime.now().strftime("%Y%m%d%H%M")[:-1]  # 10-min bucket
+        cache_key = f"aq_{target_lat}_{target_lon}_{bucket}"
+        cache_file = os.path.join(CACHE_DIR, f"{cache_key}.json")
+
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+
+        params = {
+            "latitude": target_lat,
+            "longitude": target_lon,
+            "current": AQ_CURRENT_FIELDS,
+            "timezone": "auto",
+        }
 
         try:
-            if os.path.exists(cache_file):
-                with open(cache_file, "r", encoding="utf-8") as cache:
-                    return json.load(cache)
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(AIR_QUALITY_URL, params=params) as resp:
+                    if resp.status != 200:
+                        text = await resp.text()
+                        print(f"[AQ] Open-Meteo returned {resp.status}: {text[:200]}")
+                        return self._unavailable_response(target_lat, target_lon)
 
-            params = {
-                "latitude": target_lat,
-                "longitude": target_lon,
-                "current": "us_aqi,pm2_5,pm10,nitrogen_dioxide,carbon_monoxide",
-                "timezone": "auto",
-            }
-            response = await asyncio.to_thread(requests.get, self.base_url, params=params, timeout=8)
-            response.raise_for_status()
-            current = response.json().get("current", {})
+                    raw = await resp.json()
+
+            current = raw.get("current", {})
             if not current:
-                raise ValueError("Air-quality provider returned no current data")
+                return self._unavailable_response(target_lat, target_lon)
 
             us_aqi = current.get("us_aqi")
+            eu_aqi = current.get("european_aqi")
             pm25 = current.get("pm2_5")
-            
-            # If provider returned None or 0, fallback to estimation
-            if us_aqi is None or pm25 is None or (us_aqi == 0 and pm25 == 0):
-                return self._get_fallback_data(target_lat, target_lon)
+            pm10 = current.get("pm10")
+            no2 = current.get("nitrogen_dioxide")
+            so2 = current.get("sulphur_dioxide")
+            ozone = current.get("ozone")
+            co = current.get("carbon_monoxide")
+            updated_at = current.get("time", datetime.now().isoformat())
+
+            # At minimum we need either us_aqi or pm25 to be valid
+            if us_aqi is None and pm25 is None:
+                return self._unavailable_response(target_lat, target_lon)
 
             result = {
+                "available": True,
+                "source": "Open-Meteo / CAMS Atmospheric Model",
+                "source_note": "Coordinate-based atmospheric model data. Not a physical ground sensor.",
+                "location": {"lat": target_lat, "lon": target_lon},
+                "aqi": {
+                    "us_aqi": us_aqi,
+                    "european_aqi": eu_aqi,
+                    "scale": "US AQI (EPA standard)"
+                },
+                "pollutants": {
+                    "pm2_5": pm25,
+                    "pm10": pm10,
+                    "ozone": ozone,
+                    "nitrogen_dioxide": no2,
+                    "sulphur_dioxide": so2,
+                    "carbon_monoxide": co,
+                },
+                "updated_at": updated_at,
+                # Legacy compat field used by some existing endpoints
                 "results": [{
-                    "location": "Open-Meteo Modelled Air Quality",
+                    "location": "Open-Meteo CAMS Model",
                     "coordinates": {"latitude": target_lat, "longitude": target_lon},
                     "measurements": {
                         "us_aqi": us_aqi,
                         "pm25": pm25,
-                        "pm10": current.get("pm10", pm25 * 1.5 if pm25 else 50),
-                        "no2": current.get("nitrogen_dioxide", 25.0),
-                        "co": current.get("carbon_monoxide", 400.0),
+                        "pm10": pm10,
+                        "ozone": ozone,
+                        "no2": no2,
+                        "so2": so2,
+                        "co": co,
                     },
-                    "last_updated": current.get("time", datetime.now().isoformat()),
+                    "last_updated": updated_at,
                 }],
                 "timestamp": datetime.now().isoformat(),
-                "source": "Open-Meteo",
             }
-            with open(cache_file, "w", encoding="utf-8") as cache:
-                json.dump(result, cache)
+
+            # Write to cache
+            try:
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump(result, f)
+            except Exception:
+                pass
+
             return result
-        except Exception as error:
-            print(f"Air-quality provider notice: {error}. Providing spatial ML model estimation.")
-            return self._get_fallback_data(target_lat, target_lon)
+
+        except asyncio.TimeoutError:
+            print(f"[AQ] Timeout fetching air quality for ({target_lat}, {target_lon})")
+            return self._unavailable_response(target_lat, target_lon)
+        except Exception as e:
+            print(f"[AQ] Error fetching air quality for ({target_lat}, {target_lon}): {e}")
+            return self._unavailable_response(target_lat, target_lon)
 
     @staticmethod
-    def _get_fallback_data(lat: float, lon: float):
-        """Generate realistic continuous spatial estimates when external provider is unavailable."""
-        now = datetime.now()
-        hour = now.hour
-        # Diurnal pattern
-        diurnal_factor = 1.2 if (7 <= hour <= 10 or 18 <= hour <= 22) else 0.85
-        
-        # Distance from city center
-        dist = np.sqrt((lat - 28.6139)**2 + (lon - 77.2090)**2)
-        base_pm25 = max(25.0, (110.0 * np.exp(-dist * 4) + 65.0) * diurnal_factor)
-        base_aqi = max(50, round(base_pm25 * 1.45))
-        
+    def _unavailable_response(lat: float, lon: float) -> Dict:
+        """
+        Returns an honest 'data unavailable' response without fake numbers.
+        """
         return {
-            "results": [{
-                "location": f"AtmosPulse Spatial Model ({lat:.2f}, {lon:.2f})",
-                "coordinates": {"latitude": lat, "longitude": lon},
-                "measurements": {
-                    "us_aqi": int(base_aqi),
-                    "pm25": round(base_pm25, 1),
-                    "pm10": round(base_pm25 * 1.6, 1),
-                    "no2": round(25.0 * diurnal_factor, 1),
-                    "co": round(450.0 * diurnal_factor, 1),
-                },
-                "last_updated": now.isoformat(),
-            }],
-            "timestamp": now.isoformat(),
-            "source": "Hyperlocal-Spatial-Model",
+            "available": False,
+            "source": "Open-Meteo / CAMS Atmospheric Model",
+            "source_note": "Air quality data is temporarily unavailable for this location.",
+            "location": {"lat": lat, "lon": lon},
+            "aqi": {"us_aqi": None, "european_aqi": None, "scale": "US AQI (EPA standard)"},
+            "pollutants": {
+                "pm2_5": None,
+                "pm10": None,
+                "ozone": None,
+                "nitrogen_dioxide": None,
+                "sulphur_dioxide": None,
+                "carbon_monoxide": None,
+            },
+            "updated_at": datetime.now().isoformat(),
+            "results": [],
+            "timestamp": datetime.now().isoformat(),
         }

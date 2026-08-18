@@ -1,11 +1,12 @@
 services:
-  # Backend API Service
+  # ── Backend API ─────────────────────────────────────────────────────────────
   - type: web
     name: hyperlocal-aqi-backend
     runtime: python
     plan: free
     buildCommand: cd backend && pip install -r requirements.txt
     startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.0
@@ -15,9 +16,10 @@ services:
         generateValue: true
       - key: DEBUG
         value: false
-    healthCheckPath: /
+      - key: ALLOWED_ORIGINS
+        value: "*"
 
-  # Frontend Service
+  # ── Frontend Static Site ─────────────────────────────────────────────────────
   - type: web
     name: hyperlocal-aqi-frontend
     runtime: static
