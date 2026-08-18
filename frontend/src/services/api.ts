@@ -5,6 +5,7 @@ const API_BASE_URL = resolveApiBaseUrl();
 
 const api = axios.create({
     baseURL: API_BASE_URL,
+    timeout: 15000,
     headers: {
         'Content-Type': 'application/json',
     },
@@ -43,9 +44,9 @@ export const getLiveAQI = async (lat?: number, lon?: number) => {
     return response.data;
 };
 
-export const getAQIGrid = async (lat?: number, lon?: number) => {
+export const getAQIGrid = async (lat?: number, lon?: number, radiusKm: number = 5) => {
     const response = await api.get('/aqi/grid', {
-        params: { lat, lon }
+        params: { lat, lon, radius_km: radiusKm }
     });
     return response.data;
 };

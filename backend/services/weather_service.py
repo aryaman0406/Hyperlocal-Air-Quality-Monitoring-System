@@ -5,14 +5,11 @@ from typing import Dict, Optional
 class WeatherService:
     """
     Service to fetch weather data including temperature
-    Uses OpenWeatherMap API (free tier available)
+    Uses Open-Meteo's no-key weather endpoint.
     """
     
     def __init__(self):
-        # You can get a free API key from https://openweathermap.org/api
-        # For now, using a demo key or set via environment variable
-        self.api_key = os.getenv("OPENWEATHER_API_KEY", "demo_key")
-        self.base_url = "https://api.openweathermap.org/data/2.5/weather"
+        self.base_url = "https://api.open-meteo.com/v1/forecast"
     
     async def get_weather_data(self, lat: float, lon: float) -> Optional[Dict]:
         """
@@ -23,32 +20,34 @@ class WeatherService:
             params = {
                 "lat": lat,
                 "lon": lon,
-                "appid": self.api_key,
-                "units": "metric"  # Celsius
+                "current": "temperature_2m,apparent_temperature,relative_humidity_2m,surface_pressure,weather_code,wind_speed_10m"
             }
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(self.base_url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()
+                        current = data.get("current", {})
                         return {
-                            "temperature": data["main"]["temp"],
-                            "feels_like": data["main"]["feels_like"],
-                            "humidity": data["main"]["humidity"],
-                            "pressure": data["main"]["pressure"],
-                            "weather": data["weather"][0]["description"],
-                            "wind_speed": data["wind"]["speed"],
-                            "clouds": data.get("clouds", {}).get("all", 0)
+                            "temperature": current.get("temperature_2m"),
+                            "feels_like": current.get("apparent_temperature"),
+                            "humidity": current.get("relative_humidity_2m"),
+                            "pressure": current.get("surface_pressure"),
+                            "weather": self._weather_description(current.get("weather_code")),
+                            "wind_speed": current.get("wind_speed_10m"),
+                            "clouds": None,
+                            "source": "Open-Meteo",
                         }
-                    elif response.status == 401:
-                        # API key issue - return mock data for development
-                        return self._get_mock_weather(lat, lon)
-                    else:
-                        print(f"Weather API error: {response.status}")
-                        return self._get_mock_weather(lat, lon)
+                    print(f"Weather API error: {response.status}")
+                    return self._get_mock_weather(lat, lon)
         except Exception as e:
             print(f"Error fetching weather data: {e}")
             return self._get_mock_weather(lat, lon)
+
+    @staticmethod
+    def _weather_description(code: Optional[int]) -> str:
+        descriptions = {0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast", 45: "fog", 48: "rime fog", 51: "light drizzle", 61: "light rain", 63: "rain", 65: "heavy rain", 71: "light snow", 80: "rain showers", 95: "thunderstorm"}
+        return descriptions.get(code, "unknown")
     
     def _get_mock_weather(self, lat: float, lon: float) -> Dict:
         """

@@ -15,6 +15,7 @@ from services.location_service import LocationService
 from services.comparison_service import ComparisonService
 from services.weather_service import WeatherService
 from models.database import HistoricalDatabase, AQIReading, FavoriteLocation
+from models.schemas import SymptomLog, Venue, UserReport
 
 router = APIRouter()
 openaq_service = OpenAQService()
@@ -67,10 +68,11 @@ async def get_live_aqi(
 @router.get("/aqi/grid")
 async def get_aqi_grid(
     lat: Optional[float] = Query(None, description="Latitude"),
-    lon: Optional[float] = Query(None, description="Longitude")
+    lon: Optional[float] = Query(None, description="Longitude"),
+    radius_km: float = Query(5, ge=1, le=25, description="Map radius in kilometres")
 ):
-    """Get the predicted AQI for the 250m x 250m grid."""
-    return await prediction_service.get_full_grid(lat=lat, lon=lon)
+    """Get a bounded AQI grid suitable for rendering in a browser map."""
+    return await prediction_service.get_full_grid(lat=lat, lon=lon, radius_km=radius_km)
 
 @router.get("/aqi/hotspots")
 async def get_hotspots(

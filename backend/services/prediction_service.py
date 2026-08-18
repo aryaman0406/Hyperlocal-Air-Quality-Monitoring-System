@@ -35,8 +35,17 @@ class PredictionService:
         min_lat, max_lat = target_lat - lat_offset, target_lat + lat_offset
         min_lon, max_lon = target_lon - lon_offset, target_lon + lon_offset
 
-        lats = np.arange(min_lat, max_lat, self.resolution)
-        lons = np.arange(min_lon, max_lon, self.resolution)
+        # Keep the response small enough for a browser map.  A fixed 500 m
+        # grid over 25 km produced about 10,000 SVG markers and routinely
+        # stalled the UI (and the free backend while serialising it).
+        max_axis_points = 30
+        resolution = max(
+            self.resolution,
+            (max_lat - min_lat) / max_axis_points,
+            (max_lon - min_lon) / max_axis_points,
+        )
+        lats = np.arange(min_lat, max_lat, resolution)
+        lons = np.arange(min_lon, max_lon, resolution)
         lat_grid, lon_grid = np.meshgrid(lats, lons)
         
         flat_lat = lat_grid.flatten()

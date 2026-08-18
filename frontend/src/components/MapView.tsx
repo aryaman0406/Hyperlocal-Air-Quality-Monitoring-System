@@ -68,22 +68,13 @@ const MapView: React.FC<MapViewProps> = ({
   const fetchGridData = async () => {
     setLoading(true);
     try {
-      const data = await getAQIGrid(center[0], center[1]);
+      const data = await getAQIGrid(center[0], center[1], 5);
       setGridData(data.grid || []);
     } catch (error) {
       console.error("Failed to fetch grid data", error);
-      // Mock data
-      const mockGrid = [];
-      for (let i = 0; i < 15; i++) {
-        for (let j = 0; j < 15; j++) {
-          mockGrid.push({
-            lat: center[0] - 0.15 + i * 0.02,
-            lon: center[1] - 0.15 + j * 0.02,
-            aqi: 50 + Math.random() * 300
-          });
-        }
-      }
-      setGridData(mockGrid);
+      // Do not present randomly generated markers as live measurements.
+      setGridData([]);
+      setSearchError('Map data is temporarily unavailable. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -15,10 +15,6 @@ services:
         generateValue: true
       - key: DEBUG
         value: false
-      - key: OPENAQ_API_KEY
-        sync: false
-      - key: WEATHER_API_KEY
-        sync: false
     healthCheckPath: /
 
   # Frontend Service

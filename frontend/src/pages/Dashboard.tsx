@@ -81,7 +81,7 @@ const Dashboard: React.FC = () => {
             } catch (error) {
                 console.error("Failed to fetch data", error);
                 if (isUnmounted) return;
-                setInitialError('Live AQI data is unavailable right now. The app is using fallback views while the backend wakes up.');
+                setInitialError('Unable to reach the live AQI service. Retrying automatically; check the backend health endpoint if this persists.');
                 scheduleRetry();
             } finally {
                 if (isUnmounted) return;
@@ -164,9 +164,9 @@ const Dashboard: React.FC = () => {
     useEffect(() => {
         if (liveData?.results?.[0]?.measurements) {
             const m = liveData.results[0].measurements;
-            const pm25Value = m.pm25 || m.pm2_5 || m.PM25 || 0;
-            if (pm25Value > 0) {
-                setCurrentAqi(Math.round(pm25Value));
+            const aqiValue = m.us_aqi || m.aqi || m.pm25 || m.pm2_5 || m.PM25 || 0;
+            if (aqiValue > 0) {
+                setCurrentAqi(Math.round(aqiValue));
             }
         }
     }, [liveData]);
