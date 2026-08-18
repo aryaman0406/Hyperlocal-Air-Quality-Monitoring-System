@@ -109,6 +109,11 @@ async def root():
         "docs": "/docs"
     }
 
+@app.head("/")
+async def root_health_probe():
+    """Allow platform health probes that use HEAD requests."""
+    return None
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
