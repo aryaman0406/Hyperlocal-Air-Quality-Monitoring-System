@@ -2,7 +2,6 @@ import { useState } from 'react';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import MapView from './components/MapView';
-import Notifications from './components/Notifications';
 import Settings from './components/Settings';
 
 function App() {
@@ -11,15 +10,13 @@ function App() {
   const renderView = () => {
     switch (activeView) {
       case 'dashboard':
-        return <Dashboard />;
+        return <Dashboard onNavigateMap={() => setActiveView('map')} />;
       case 'map':
         return <MapView />;
-      case 'notifications':
-        return <Notifications />;
       case 'settings':
         return <Settings />;
       default:
-        return <Dashboard />;
+        return <Dashboard onNavigateMap={() => setActiveView('map')} />;
     }
   };
 

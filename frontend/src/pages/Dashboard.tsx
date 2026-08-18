@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion } from 'framer-motion';
-import { Wind, AlertTriangle, TrendingUp, MapPin, Download } from 'lucide-react';
+import { Wind, AlertTriangle, MapPin, Download, Thermometer } from 'lucide-react';
 import styles from './Dashboard.module.css';
-import { getLiveAQI, getHotspots, exportData, AQIWebSocket, getHistoricalData } from '../services/api';
+import { getLiveAQI, getHotspots, exportData, AQIWebSocket, getHistoricalData, getLocationAQI } from '../services/api';
 import MapView from '../components/MapView';
 import Favorites from '../components/Favorites';
 import Forecast from '../components/Forecast';
@@ -12,11 +12,16 @@ import SymptomLogger from '../components/SymptomLogger';
 import InstitutionSafety from '../components/InstitutionSafety';
 import PollutionReport from '../components/PollutionReport';
 
-const Dashboard: React.FC = () => {
+interface DashboardProps {
+    onNavigateMap?: () => void;
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ onNavigateMap }) => {
     const [trendData, setTrendData] = useState<any[]>([]);
     const [liveData, setLiveData] = useState<any>(null);
     const [hotspots, setHotspots] = useState<any[]>([]);
     const [currentAqi, setCurrentAqi] = useState<number>(184);
+    const [currentTemp, setCurrentTemp] = useState<number>(26.6);
     const [wsConnected, setWsConnected] = useState(false);
     const [initialLoading, setInitialLoading] = useState(true);
     const [initialError, setInitialError] = useState('');
@@ -69,7 +74,7 @@ const Dashboard: React.FC = () => {
             }
 
             try {
-                const [liveRes, histRes, hotRes] = await Promise.allSettled([
+                const [liveRes, histRes, hotRes, locRes] = await Promise.allSettled([
                     getLiveAQI(location.lat, location.lon),
                     getHistoricalData({
                         lat: location.lat,
@@ -77,7 +82,8 @@ const Dashboard: React.FC = () => {
                         limit: 24,
                         radius_km: 10
                     }),
-                    getHotspots(location.lat, location.lon)
+                    getHotspots(location.lat, location.lon),
+                    getLocationAQI(location.lat, location.lon)
                 ]);
 
                 if (isUnmounted) return;
@@ -92,6 +98,17 @@ const Dashboard: React.FC = () => {
                     const val = m?.us_aqi || m?.aqi || m?.pm25 || m?.pm2_5 || m?.PM25;
                     if (val && Number(val) > 0) {
                         liveAqiValue = Math.round(Number(val));
+                        setCurrentAqi(liveAqiValue);
+                    }
+                }
+
+                // Process Location Weather & Temperature
+                if (locRes.status === 'fulfilled' && locRes.value) {
+                    if (locRes.value.temperature !== undefined && locRes.value.temperature !== null) {
+                        setCurrentTemp(Number(locRes.value.temperature));
+                    }
+                    if (locRes.value.aqi && Number(locRes.value.aqi) > 0 && liveRes.status !== 'fulfilled') {
+                        liveAqiValue = Math.round(Number(locRes.value.aqi));
                         setCurrentAqi(liveAqiValue);
                     }
                 }
@@ -375,28 +392,30 @@ const Dashboard: React.FC = () => {
                 <>
                     <section className={styles.statsGrid}>
                         <StatCard
-                            label="Avg. PM2.5"
-                            value={currentAqi ? Math.round(currentAqi).toString() : "184"}
-                            trend={currentAqi > 150 ? "+8%" : "-4%"}
+                            label="Real-Time AQI"
+                            value={currentAqi ? `${Math.round(currentAqi)}` : "184"}
+                            trend={currentAqi > 150 ? "+8% Today" : "-4% Normal"}
                             status={getAqiCategory(currentAqi)}
                             icon={<Wind size={20} />}
                         />
                         <StatCard
-                            label="Monitoring Stations"
-                            value={stationCount}
-                            status="Active"
+                            label="Current Temperature"
+                            value={`${currentTemp.toFixed(1)}°C`}
+                            trend={`${(currentTemp * 9 / 5 + 32).toFixed(1)}°F`}
+                            status="Live Weather"
+                            icon={<Thermometer size={20} />}
+                        />
+                        <StatCard
+                            label="Monitoring Coverage"
+                            value={`${stationCount} Active Grid`}
+                            trend="High Res"
+                            status="94% Confidence"
                             icon={<MapPin size={20} />}
                         />
                         <StatCard
-                            label="Region Confidence"
-                            value="94%"
-                            trend="High"
-                            status="Verified"
-                            icon={<TrendingUp size={20} />}
-                        />
-                        <StatCard
-                            label="Active Alerts"
-                            value={currentAqi > 100 ? "3" : "0"}
+                            label="Health Advisory"
+                            value={currentAqi > 150 ? "Mask Advised" : "Good Air"}
+                            trend={currentAqi > 150 ? "High Risk" : "Safe"}
                             status={currentAqi > 150 ? "Critical" : "Normal"}
                             icon={<AlertTriangle size={20} />}
                         />
@@ -474,10 +493,28 @@ const Dashboard: React.FC = () => {
 
                     <section className={`${styles.mapSection} glass-card card-3d`}>
                         <div className="inner-3d" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                            <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Hyperlocal Air Quality Heatmap</h3>
-                            <div style={{ display: 'flex', gap: '1rem' }}>
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Grid Resolution: 250m</span>
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Live Spatial Model</span>
+                            <div>
+                                <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Hyperlocal Air Quality & Temperature Heatmap</h3>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Click anywhere on the map to pin a location and view real-time AQI and temperature.</p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                                {onNavigateMap && (
+                                    <button
+                                        onClick={onNavigateMap}
+                                        style={{
+                                            padding: '0.35rem 0.75rem',
+                                            background: 'rgba(99, 102, 241, 0.2)',
+                                            border: '1px solid rgba(99, 102, 241, 0.4)',
+                                            borderRadius: '8px',
+                                            color: '#818cf8',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 600,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Fullscreen Map View →
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <div className="inner-3d" style={{ height: 'calc(100% - 4rem)' }}>
