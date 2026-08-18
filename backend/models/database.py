@@ -5,7 +5,8 @@ import os
 from .schemas import AQIReading, FavoriteLocation, SymptomLog, Venue, UserReport
 
 # Simple file-based storage (can be upgraded to SQLite/PostgreSQL)
-DATA_DIR = "data/cache"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, "data", "cache")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 class HistoricalDatabase:

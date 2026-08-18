@@ -210,8 +210,11 @@ export const getReports = async () => {
 // WebSocket connection for real-time updates
 export class AQIWebSocket {
     private ws: WebSocket | null = null;
-    private reconnectInterval: number = 5000;
+    private baseReconnectInterval: number = 5000;
+    private maxReconnectInterval: number = 30000;
+    private currentReconnectInterval: number = 5000;
     private reconnectTimer: any = null;
+    private isExplicitDisconnect: boolean = false;
 
     private onMessage: (data: any) => void;
     private onConnect?: () => void;
@@ -228,17 +231,29 @@ export class AQIWebSocket {
     }
 
     connect() {
+        this.isExplicitDisconnect = false;
         try {
             const wsUrl = resolveWebSocketUrl();
+            if (!wsUrl || (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://'))) {
+                console.warn('Invalid WebSocket URL resolved:', wsUrl);
+                this.scheduleReconnect();
+                return;
+            }
+
+            if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+                return;
+            }
+
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
-                console.log('WebSocket connected');
-                if (this.onConnect) this.onConnect();
+                console.log('WebSocket connected to', wsUrl);
+                this.currentReconnectInterval = this.baseReconnectInterval;
                 if (this.reconnectTimer) {
                     clearTimeout(this.reconnectTimer);
                     this.reconnectTimer = null;
                 }
+                if (this.onConnect) this.onConnect();
             };
 
             this.ws.onmessage = (event) => {
@@ -251,13 +266,14 @@ export class AQIWebSocket {
             };
 
             this.ws.onclose = () => {
-                console.log('WebSocket disconnected');
                 if (this.onDisconnect) this.onDisconnect();
-                this.scheduleReconnect();
+                if (!this.isExplicitDisconnect) {
+                    this.scheduleReconnect();
+                }
             };
 
             this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
+                console.warn('WebSocket connection error (will retry automatically):', error);
             };
         } catch (error) {
             console.error('Error creating WebSocket:', error);
@@ -266,21 +282,29 @@ export class AQIWebSocket {
     }
 
     private scheduleReconnect() {
+        if (this.isExplicitDisconnect) return;
         if (!this.reconnectTimer) {
             this.reconnectTimer = setTimeout(() => {
-                console.log('Attempting to reconnect WebSocket...');
+                this.reconnectTimer = null;
+                this.currentReconnectInterval = Math.min(
+                    this.currentReconnectInterval * 1.5,
+                    this.maxReconnectInterval
+                );
                 this.connect();
-            }, this.reconnectInterval);
+            }, this.currentReconnectInterval);
         }
     }
 
     disconnect() {
+        this.isExplicitDisconnect = true;
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
         if (this.ws) {
-            this.ws.close();
+            try {
+                this.ws.close();
+            } catch (_) {}
             this.ws = null;
         }
     }

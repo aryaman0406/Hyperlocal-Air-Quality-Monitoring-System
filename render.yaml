@@ -30,9 +30,6 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_BASE_URL
-        # Static-site variables are compiled into browser JavaScript.  A
-        # fromService `host` value is a Render private hostname, which only
-        # exists inside Render's network and cannot be reached by visitors.
-        value: https://hyperlocal-air-quality-monitoring-system.onrender.com
+        value: https://hyperlocal-aqi-backend.onrender.com
       - key: VITE_WS_URL
-        value: wss://hyperlocal-air-quality-monitoring-system.onrender.com
+        value: wss://hyperlocal-aqi-backend.onrender.com

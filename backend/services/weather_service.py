@@ -11,6 +11,7 @@ class WeatherService:
     def __init__(self):
         self.base_url = "https://api.open-meteo.com/v1/forecast"
     
+    
     async def get_weather_data(self, lat: float, lon: float) -> Optional[Dict]:
         """
         Fetch weather data for given coordinates
@@ -18,12 +19,13 @@ class WeatherService:
         """
         try:
             params = {
-                "lat": lat,
-                "lon": lon,
+                "latitude": lat,
+                "longitude": lon,
                 "current": "temperature_2m,apparent_temperature,relative_humidity_2m,surface_pressure,weather_code,wind_speed_10m"
             }
             
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=8)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(self.base_url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()

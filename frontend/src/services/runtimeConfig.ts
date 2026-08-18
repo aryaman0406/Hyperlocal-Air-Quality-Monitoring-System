@@ -64,7 +64,7 @@ const toWebSocketOrigin = (value: string) => {
 export const resolveApiBaseUrl = () => {
   const configuredUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
 
-  if (configuredUrl) {
+  if (configuredUrl && configuredUrl.trim() !== '') {
     const normalizedUrl = addProtocol(configuredUrl, 'http:');
     return normalizedUrl.endsWith('/api') ? normalizedUrl : `${normalizedUrl}/api`;
   }
@@ -74,6 +74,10 @@ export const resolveApiBaseUrl = () => {
     return `${inferredRenderOrigin}/api`;
   }
 
+  if (typeof window !== 'undefined' && window.location.origin) {
+    return import.meta.env.DEV ? `${LOCAL_API_BASE_URL}/api` : `${window.location.origin}/api`;
+  }
+
   return import.meta.env.DEV ? `${LOCAL_API_BASE_URL}/api` : '/api';
 };
 
@@ -81,7 +85,7 @@ export const resolveWebSocketUrl = () => {
   const configuredWsUrl = import.meta.env.VITE_WS_URL;
   const configuredApiUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
 
-  if (configuredWsUrl) {
+  if (configuredWsUrl && configuredWsUrl.trim() !== '') {
     const normalizedUrl = addProtocol(configuredWsUrl, 'ws:');
 
     if (/^wss?:\/\//i.test(normalizedUrl)) {
@@ -91,7 +95,7 @@ export const resolveWebSocketUrl = () => {
     return `${normalizedUrl}/ws`;
   }
 
-  if (configuredApiUrl) {
+  if (configuredApiUrl && configuredApiUrl.trim() !== '') {
     const websocketOrigin = toWebSocketOrigin(configuredApiUrl);
     return websocketOrigin.endsWith('/ws') ? websocketOrigin : `${websocketOrigin}/ws`;
   }
@@ -101,5 +105,14 @@ export const resolveWebSocketUrl = () => {
     return inferredRenderOrigin.replace(/^https:\/\//i, 'wss://') + '/ws';
   }
 
-  return import.meta.env.DEV ? LOCAL_WS_URL : '/ws';
+  if (typeof window !== 'undefined' && window.location.host) {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // In dev mode when running vite on 5173 without proxy, default to localhost:8000
+    if (import.meta.env.DEV && !window.location.port.includes('8000')) {
+      return LOCAL_WS_URL;
+    }
+    return `${wsProtocol}//${window.location.host}/ws`;
+  }
+
+  return LOCAL_WS_URL;
 };
