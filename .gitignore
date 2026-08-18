@@ -58,6 +58,7 @@ build/
 
 # Testing
 .pytest_cache/
+pytest-cache-files-*/
 .coverage
 htmlcov/
 
