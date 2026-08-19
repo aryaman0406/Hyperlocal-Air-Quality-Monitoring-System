@@ -4,7 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 import os
+import sys
 from datetime import datetime
+
+# Ensure backend directory is in Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from api.endpoints import router as api_router
 from api.websocket import manager

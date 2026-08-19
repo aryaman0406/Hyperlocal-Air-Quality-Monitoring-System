@@ -290,7 +290,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateMap }) => {
 
             {/* ── Error Banner ──────────────────────────────────────────────── */}
             {dataError && (
-                <div style={{
+                <div className={styles.fullWidth} style={{
                     padding: '0.75rem 1rem', marginBottom: '1rem',
                     background: 'rgba(245,158,11,0.12)',
                     border: '1px solid rgba(245,158,11,0.3)',
